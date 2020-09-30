@@ -17,7 +17,7 @@ class FileslideStreamer < Sinatra::Base
     uri_list = request_payload.fetch(:uri_list)
 
     200
-  rescue JSON::ParserError
+  rescue JSON::ParserError, KeyError
     halt 400
   end
 end

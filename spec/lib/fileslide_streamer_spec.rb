@@ -19,9 +19,20 @@ RSpec.describe FileslideStreamer do
   end
 
   context '/download' do
-    it 'fails with 400 if the request is not valid JSON'
-    it 'fails with 400 if the request JSON does not contain a file_name key'
-    it 'fails with 400 if the request JSON does not contain a uri_list key'
+    it 'fails with 400 if the request is not valid JSON' do
+      post '/download', "I'm not valid json"
+      expect(last_response.status).to eq 400
+    end
+
+    it 'fails with 400 if the request JSON does not contain a file_name key' do
+      post '/download', {uri_list: []}.to_json
+      expect(last_response.status).to eq 400
+    end
+    it 'fails with 400 if the request JSON does not contain a uri_list key' do
+      post '/download', {file_name: 'files.zip'}.to_json
+      expect(last_response.status).to eq 400
+    end
+    
     it 'fails with 403 and the returned html if the upstream API does not authorize the download'
     it 'fails with 502 and a list of failed URIs is any of the URIs are not 200/206'
     it 'streams the uris as a zip'
