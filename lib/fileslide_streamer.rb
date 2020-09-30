@@ -33,12 +33,18 @@ class FileslideStreamer < Sinatra::Base
     availability_checking_http = HTTP.timeout(connect: 5, read: 10).headers("Range" => "bytes=0-0").follow(max_hops: 2)
     failed_uris = []
     seen_files = uri_list.map do |uri|
-      resp = availability_checking_http.get(uri)
-      unless [200,206].include? resp.status
-        failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
+      begin
+        resp = availability_checking_http.get(uri)
+        unless [200,206].include? resp.status
+          failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
+        end
+        content_disposition = resp.headers.to_h["Content-Disposition"]
+        ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
+      rescue HTTP::ConnectionError
+        # Most likely the server we're trying to connect to is offline. In this case we display this URI with
+        # a 503 error which means "Service Unavailable".
+        failed_uris << FailedUri.new(uri: uri, response_code: HTTP::Response::Status.new(503))
       end
-      content_disposition = resp.headers.to_h["Content-Disposition"]
-      ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
     end
     unless failed_uris.empty?
       halt 502, construct_error_message(failed_uris: failed_uris)

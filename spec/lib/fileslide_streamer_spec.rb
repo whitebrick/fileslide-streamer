@@ -56,8 +56,23 @@ RSpec.describe FileslideStreamer do
       expect(last_response.body).to eq "NOT ALLOWED"
     end
 
-    it 'fails with 502 and proper errors if any of the upstream servers are unavailable'
-    # hostnames ending with .invalid are guarantueed not to exist per RFC 6761
+    it 'fails with 502 and proper errors if any of the upstream servers are unavailable' do
+      expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+        and_return({authorized: true, unauthorized_html: nil})
+
+      post '/download', {file_name: 'files.zip', uri_list: [
+        # hostnames ending with .invalid are guarantueed not to exist per RFC 6761
+        "http://example.invalid/allowed_but_unavailable_file1",
+        "http://example.invalid/allowed_but_unavailable_file2",
+        "http://localhost:9293/random_bytes1.bin",
+      ]}.to_json
+
+      expect(last_response.status).to eq 502
+      expect(last_response.body).to include '502 Bad Gateway'
+      expect(last_response.body).to include 'The following files could not be fetched:'
+      expect(last_response.body).to include 'http://example.invalid/allowed_but_unavailable_file1 [503 Service Unavailable]'
+      expect(last_response.body).to include 'http://example.invalid/allowed_but_unavailable_file2 [503 Service Unavailable]'
+    end
 
     it 'fails with 502 and a list of failed URIs if any of the URIs are not 200/206' do
       expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
@@ -66,6 +81,7 @@ RSpec.describe FileslideStreamer do
       post '/download', {file_name: 'files.zip', uri_list: [
         "http://example.com/allowed_but_unavailable_file1",
         "http://example.com/allowed_but_unavailable_file2",
+        "http://localhost:9293/random_bytes1.bin",
       ]}.to_json
 
       expect(last_response.status).to eq 502
