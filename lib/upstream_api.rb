@@ -10,7 +10,7 @@ class UpstreamAPI
   end
 
   def verify_uri_list(uri_list: )
-    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: uri_list.to_json)
+    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list}.to_json)
     unless auth_response == 200
       raise UpstreamNotFoundError
     end
@@ -21,6 +21,15 @@ class UpstreamAPI
   end
 
   def report(start_time:, stop_time: , bytes_sent: )
+    @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {
+      start_time: start_time,
+      stop_time: stop_time,
+      bytes_sent: bytes_sent,
+    })
+  rescue HTTP::Error
+    # it's already after the response to the user has completed, not much
+    # that we can do
+    nil
   end
 
 end
