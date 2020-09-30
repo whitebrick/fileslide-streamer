@@ -20,4 +20,7 @@ class UpstreamAPI
     raise UpstreamNotFoundError
   end
 
+  def report()
+  end
+
 end

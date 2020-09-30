@@ -1,4 +1,11 @@
 class FileslideStreamer < Sinatra::Base
+  FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
+    def to_s
+      "#{uri.to_s} [#{response_code}]\n"
+    end
+  end
+
+
   get "/" do
     redirect to('https://fileslide.io')
   end
@@ -19,8 +26,24 @@ class FileslideStreamer < Sinatra::Base
     verification_result = upstream.verify_uri_list(uri_list: uri_list)
     halt 403, verification_result[:unauthorized_html] unless verification_result[:authorized]
 
-    # Do a head request to all the URIs to check they're available
-
+    # Do a head request to all the URIs to check they're available.
+    # We do a range request the first byte instead of doing a HEAD request
+    # because S3 presigned URLs (and possibly other cloud providers too) are
+    # only valid for GET.
+    http = HTTP.timeout(connect: 5, read: 10).headers("Range" => "bytes=0-0")
+    failed_uris = []
+    seen_file_names = uri_list.map do |uri|
+      parsed_uri = URI.parse(uri) # sanity check that it actually parses
+      resp = http.get(uri)
+      unless [200,206].include? resp.status
+        failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
+      end
+      content_disposition = resp.headers.to_h["Content-Disposition"]
+      FilenameUtils::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
+    end
+    unless failed_uris.empty?
+      halt 502, construct_error_message(failed_uris: failed_uris)
+    end
     # Deduplicate filenames if required
 
 
@@ -30,5 +53,14 @@ class FileslideStreamer < Sinatra::Base
     halt 400
   rescue UpstreamAPI::UpstreamNotFoundError => e
     halt 500
+  end
+
+
+  def construct_error_message(failed_uris: )
+    resp = "502 Bad Gateway\nThe following files could not be fetched:\n"
+    failed_uris.each do |f|
+      resp << f.to_s
+    end
+    resp
   end
 end
