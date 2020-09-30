@@ -1,4 +1,5 @@
 require 'spec_helper.rb'
+require 'zip'
 
 RSpec.describe FileslideStreamer do
   def app
@@ -70,6 +71,16 @@ RSpec.describe FileslideStreamer do
 
         expect(last_response.status).to eq 200
         expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"files.zip\""
+
+        # The received body should be a valid zip file with zero items in it.
+        tf = Tempfile.new
+        tf << last_response.body
+        tf.flush
+        Zip::File.open(tf) do | zip |
+          expect(zip.entries.length).to eq(0)
+        end
+      ensure
+        tf.unlink
       end
 
       xit 'streams the uris as a zip and reports to upstream' do
