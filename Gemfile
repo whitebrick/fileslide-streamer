@@ -8,6 +8,7 @@ gem "sinatra"
 gem "puma"
 gem "dotenv"
 gem "zip_tricks"
+gem "http"
 
 
 group :development do
