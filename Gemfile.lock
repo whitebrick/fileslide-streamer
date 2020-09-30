@@ -47,6 +47,7 @@ GEM
       rspec-support (~> 3.9.0)
     rspec-support (3.9.3)
     ruby2_keywords (0.0.2)
+    rubyzip (2.3.0)
     sinatra (2.1.0)
       mustermann (~> 1.0)
       rack (~> 2.2)
@@ -69,6 +70,7 @@ DEPENDENCIES
   rack-test
   rake
   rspec
+  rubyzip
   sinatra
   zip_tricks
 
