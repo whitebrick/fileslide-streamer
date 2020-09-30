@@ -5,4 +5,4 @@ Dotenv.load
 
 require __dir__ + '/lib/fileslide_streamer'
 
-run TestApp
+run FileslideStreamer
