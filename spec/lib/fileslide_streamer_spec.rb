@@ -79,6 +79,7 @@ RSpec.describe FileslideStreamer do
       it 'attaches the correct filename and reports to upstream' do
         expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
           and_return({authorized: true, unauthorized_html: nil})
+        expect_any_instance_of(UpstreamAPI).to receive(:report)
 
         post '/download', {file_name: 'zero_files.zip', uri_list: []}.to_json
 
@@ -99,6 +100,7 @@ RSpec.describe FileslideStreamer do
       it 'streams the uris as a zip and reports to upstream' do
         expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
           and_return({authorized: true, unauthorized_html: nil})
+        expect_any_instance_of(UpstreamAPI).to receive(:report)
 
         post '/download', {file_name: 'three_files.zip', uri_list: [
           "http://localhost:9293/random_bytes1.bin",
