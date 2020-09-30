@@ -30,31 +30,32 @@ class FileslideStreamer < Sinatra::Base
     # We do a range request the first byte instead of doing a HEAD request
     # because S3 presigned URLs (and possibly other cloud providers too) are
     # only valid for GET.
-    http = HTTP.timeout(connect: 5, read: 10).headers("Range" => "bytes=0-0")
+    availability_checking_http = HTTP.timeout(connect: 5, read: 10).headers("Range" => "bytes=0-0").follow(max_hops: 2)
     failed_uris = []
-    seen_file_names = uri_list.map do |uri|
-      parsed_uri = URI.parse(uri) # sanity check that it actually parses
-      resp = http.get(uri)
+    seen_files = uri_list.map do |uri|
+      resp = availability_checking_http.get(uri)
       unless [200,206].include? resp.status
         failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
       end
       content_disposition = resp.headers.to_h["Content-Disposition"]
-      FilenameUtils::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
+      ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
     end
     unless failed_uris.empty?
       halt 502, construct_error_message(failed_uris: failed_uris)
     end
-    # Deduplicate filenames if required
 
+    # Deduplicate filenames if required
+    # TODO
 
     # Pull in the URI contents and stream as zip
-    200
+    body = ZipStreamer.make_streaming_body(files: seen_files)
+    headers = {'Transfer-Encoding' => 'chunked', 'Content-Disposition' => "attachment; filename=\"#{zip_filename}\""}
+    [200,headers,body]
   rescue JSON::ParserError, KeyError => e
     halt 400
   rescue UpstreamAPI::UpstreamNotFoundError => e
     halt 500
   end
-
 
   def construct_error_message(failed_uris: )
     resp = "502 Bad Gateway\nThe following files could not be fetched:\n"

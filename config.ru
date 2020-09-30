@@ -6,6 +6,6 @@ Dotenv.load
 
 require __dir__ + '/lib/fileslide_streamer'
 require __dir__ + '/lib/upstream_api'
-require __dir__ + '/lib/filename_utils'
+require __dir__ + '/lib/zip_streamer'
 
 run FileslideStreamer

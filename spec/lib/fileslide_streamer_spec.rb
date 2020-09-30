@@ -43,6 +43,8 @@ RSpec.describe FileslideStreamer do
       expect(last_response.body).to eq "NOT ALLOWED"
     end
 
+    it 'fails with 502 and proper errors if any of the upstream servers are unavailable'
+
     it 'fails with 502 and a list of failed URIs is any of the URIs are not 200/206' do
       expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
         and_return({authorized: true, unauthorized_html: nil})
@@ -59,7 +61,30 @@ RSpec.describe FileslideStreamer do
       expect(last_response.body).to include 'http://example.com/allowed_but_unavailable_file2 [404 Not Found]'
     end
 
-    it 'streams the uris as a zip'
+    context 'when auth is OK'
+      it 'attaches the correct filename and reports to upstream' do
+        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+          and_return({authorized: true, unauthorized_html: nil})
+
+        post '/download', {file_name: 'files.zip', uri_list: []}.to_json
+
+        expect(last_response.status).to eq 200
+        expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"files.zip\""
+      end
+
+      xit 'streams the uris as a zip and reports to upstream' do
+        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+          and_return({authorized: true, unauthorized_html: nil})
+
+        post '/download', {file_name: 'files.zip', uri_list: [
+          "http://example.com/allowed_but_unavailable_file1",
+          "http://example.com/allowed_but_unavailable_file2",
+        ]}.to_json
+
+        expect(last_response.status).to eq 200
+        expect(last_response.headers["Content-Disposition"])
+      end
+
     it 'deduplicates filenames if multiple files have the same name'
   end
 end
