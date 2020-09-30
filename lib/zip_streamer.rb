@@ -1,8 +1,18 @@
 class ZipStreamer
   class SingleFile
+    attr_reader :canonical_filename, :uri
+
     def initialize(original_uri: , content_disposition: )
-      @original_uri = original_uri
+      @uri = original_uri
       @content_disposition = content_disposition
+      if @content_disposition && @content_disposition.start_with?("attachment; filename=\"")
+        # according to the spec, format must be 'attachment; filename="cool.html"'
+        # so we need to strip off the first 22 characters and the ending `"`
+        @canonical_filename = @content_disposition[22..-2]
+      else
+        @canonical_filename = File.basename(URI.parse(original_uri).path)
+      end
+
     end  
   end
 
