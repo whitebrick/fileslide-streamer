@@ -1,5 +1,6 @@
 class UpstreamAPI
   UPSTREAM_API_LOCATION = ENV.fetch("UPSTREAM_API_LOCATION")
+
   class NotAuthorizedError < Exception
   end
   class UpstreamNotFoundError < Exception

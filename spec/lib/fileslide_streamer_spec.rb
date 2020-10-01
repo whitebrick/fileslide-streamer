@@ -150,6 +150,15 @@ RSpec.describe FileslideStreamer do
         tf.unlink if tf
       end
 
-      it 'still reports to upstream even if there is an exception during streaming'
+      it 'still reports to upstream even if there is an exception during streaming' do
+        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+          and_return({authorized: true, unauthorized_html: nil})
+        expect_any_instance_of(UpstreamAPI).to receive(:report)
+        expect_any_instance_of(ZipTricks::Streamer).to receive(:write_stored_file).and_raise(HTTP::Error.new("BOOM!"))
+
+        post '/download', {file_name: 'one_file.zip', uri_list: [
+          "http://localhost:9293/random_bytes1.bin",
+        ]}.to_json
+      end
   end
 end

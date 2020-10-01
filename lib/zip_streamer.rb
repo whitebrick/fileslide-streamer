@@ -1,11 +1,16 @@
 class ZipStreamer
+  attr_reader :files
+
   class SingleFile
-    attr_reader :uri
-    attr_accessor :canonical_filename
+    attr_reader :uri, :canonical_filename
+    attr_accessor :exposed_filename
 
     def initialize(original_uri: , content_disposition: )
       @uri = original_uri
       @content_disposition = content_disposition
+      # The canonical filename is the one from content-disposition if it's defined or 
+      # the base filename from the URI if content-disposition was not defined. Multiple
+      # files can have the same canonical filename.
       if @content_disposition && @content_disposition.start_with?("attachment; filename=\"")
         # according to the spec, format must be 'attachment; filename="cool.html"'
         # so we need to strip off the first 22 characters and the ending `"`
@@ -13,7 +18,10 @@ class ZipStreamer
       else
         @canonical_filename = File.basename(URI.parse(original_uri).path)
       end
-
+      # The exposed_filename is the filename it will get in the final zip. This defaults to
+      # the canonical filename but if there are duplicates it might be altered later to remove
+      # ambiguity.
+      @exposed_filename = @canonical_filename
     end
   end
 
@@ -25,6 +33,9 @@ class ZipStreamer
     @files << file
   end
 
+  def deduplicate_filenames!
+  end
+
   def make_streaming_body
     ZipTricks::RackBody.new do |zip|
       download_complete = false
@@ -32,7 +43,7 @@ class ZipStreamer
       bytes_total = 0
       http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @files.each do |singlefile|
-        zip.write_stored_file(singlefile.canonical_filename) do |sink|
+        zip.write_stored_file(singlefile.exposed_filename) do |sink|
           resp = http.get(singlefile.uri)
           resp.body.each do |chunk|
             bytes_total += chunk.size
@@ -43,9 +54,11 @@ class ZipStreamer
       # If an exception happens during streaming, download_complete will never
       # become true and will be reported as `false`.
       download_complete = true
+    rescue HTTP::Error
+      # no real way to recover at this point
     ensure
-      # after we're done, but still within the rack body, notify
-      # upstream about the results
+      # after we're done, but still within the rack body, regardless of if there was
+      # an exception, notify upstream about the results
       stop_time = Time.now.utc
       UpstreamAPI.new.report(
         start_time: start_time,
