@@ -14,4 +14,4 @@ To run the test suite, run `bundle exec rspec` from the root folder of the repo.
 
 ## Deployment
 
-We deploy the streamer using Capistrano. To deploy, ..... TODO.
+We deploy the streamer using Capistrano. To deploy, `bundle exec cap (staging|production) deploy`, if you have the correct keypair to login to the box.
