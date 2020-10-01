@@ -20,11 +20,12 @@ class UpstreamAPI
     raise UpstreamNotFoundError
   end
 
-  def report(start_time:, stop_time: , bytes_sent: )
+  def report(start_time:, stop_time: , bytes_sent:, complete: )
     @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {
       start_time: start_time,
       stop_time: stop_time,
       bytes_sent: bytes_sent,
+      complete: complete,
     })
   rescue HTTP::Error
     # it's already after the response to the user has completed, not much

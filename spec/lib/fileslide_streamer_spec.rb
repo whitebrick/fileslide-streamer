@@ -150,6 +150,6 @@ RSpec.describe FileslideStreamer do
         tf.unlink if tf
       end
 
-    it 'deduplicates filenames if multiple files have the same name'
+      it 'still reports to upstream even if there is an exception during streaming'
   end
 end
