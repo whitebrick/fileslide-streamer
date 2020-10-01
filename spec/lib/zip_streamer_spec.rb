@@ -38,12 +38,61 @@ RSpec.describe ZipStreamer do
         content_disposition: 'attachment; filename="second_filename.jpg"')
       zs.deduplicate_filenames!
 
-      expect(zs.files.map(&:exposed_filename).uniq.length).to eq 3
-      expect(zs.files.map(&:exposed_filename)).to eq ["coolfile.jpg", "first_filename.jpg", "second_filename.jpg"]
+      expect(zs.files.map(&:zip_name).uniq.length).to eq 3
+      expect(zs.files.map(&:zip_name)).to eq ["coolfile.jpg", "first_filename.jpg", "second_filename.jpg"]
     end
 
+    it 'deduplicates filenames if multiple files have the same name' do
+      zs = ZipStreamer.new
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'http://example.com/a/coolfile.jpg',
+        content_disposition: nil)
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'http://example.com/b/coolfile.jpg',
+        content_disposition: nil)
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'http://example.com/c/coolfile.jpg',
+        content_disposition: nil)
+      zs.deduplicate_filenames!
 
+      expect(zs.files.map(&:zip_name).uniq.length).to eq 3
+      expect(zs.files.map(&:zip_name)).to eq ["a/coolfile.jpg", "b/coolfile.jpg", "c/coolfile.jpg"]
+    end
 
-    it 'deduplicates filenames if multiple files have the same name'
+    # some more examples direct from the project specifications:
+    it 'deduplicates filenames if multiple files have the same name, part two' do
+      zs = ZipStreamer.new
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'https://data1.server1.com/a/b/c/document.doc',
+        content_disposition: nil)
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'https://data1.server1.com/a/y/z/document.doc',
+        content_disposition: nil)
+      zs.deduplicate_filenames!
+
+      expect(zs.files.map(&:zip_name).uniq.length).to eq 2
+      expect(zs.files.map(&:zip_name)).to eq ["c/document.doc", "z/document.doc"]
+    end
+
+    it 'deduplicates filenames if multiple files have the same name' do
+      zs = ZipStreamer.new
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'https://data1.server1.com/a/b/c/document.doc',
+        content_disposition: nil)
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'https://data1.server1.com/a/y/z/document.doc',
+        content_disposition: nil)
+      zs << ZipStreamer::SingleFile.new(
+        original_uri: 'https://data2.server1.com/a/y/z/document.doc',
+        content_disposition: nil)
+      zs.deduplicate_filenames!
+
+      expect(zs.files.map(&:zip_name).uniq.length).to eq 3
+      expect(zs.files.map(&:zip_name)).to eq [
+        "data1.server1.com_a_b_c/document.doc",
+        "data1.server1.com_a_y_z/document.doc",
+        "data2.server1.com_a_y_z/document.doc",
+        ]
+    end
   end
 end

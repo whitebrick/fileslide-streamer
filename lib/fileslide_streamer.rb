@@ -52,7 +52,7 @@ class FileslideStreamer < Sinatra::Base
     end
 
     # Deduplicate filenames if required
-    # TODO
+    zip_streamer.deduplicate_filenames!
 
     # Pull in the URI contents and stream as zip
     http_body = zip_streamer.make_streaming_body

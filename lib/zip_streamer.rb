@@ -3,7 +3,7 @@ class ZipStreamer
 
   class SingleFile
     attr_reader :uri, :canonical_filename
-    attr_accessor :exposed_filename
+    attr_accessor :directory
 
     def initialize(original_uri: , content_disposition: )
       @uri = original_uri
@@ -18,10 +18,11 @@ class ZipStreamer
       else
         @canonical_filename = File.basename(URI.parse(original_uri).path)
       end
-      # The exposed_filename is the filename it will get in the final zip. This defaults to
-      # the canonical filename but if there are duplicates it might be altered later to remove
-      # ambiguity.
-      @exposed_filename = @canonical_filename
+      @directory = ""
+    end
+
+    def zip_name
+      directory.empty? ? canonical_filename : "#{directory}/#{canonical_filename}"
     end
   end
 
@@ -34,6 +35,15 @@ class ZipStreamer
   end
 
   def deduplicate_filenames!
+    # deduplication procedure:
+    names_hash = Hash.new(0)
+    @files.each {|f| names_hash[f.canonical_filename] += 1 }
+    # any filename that occurs more than once must have a value >= 2
+    duplicated_names = names_hash.filter {|k,v| v >= 2 }.keys
+    duplicated_names.each do |dup_name|
+      duplicated_name_files = @files.filter {|f| f.canonical_filename == dup_name}
+      find_non_common_path_prefix!(duplicated_name_files) # will update the directory attribute of the files involved
+    end
   end
 
   def make_streaming_body
@@ -43,7 +53,7 @@ class ZipStreamer
       bytes_total = 0
       http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @files.each do |singlefile|
-        zip.write_stored_file(singlefile.exposed_filename) do |sink|
+        zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
           resp.body.each do |chunk|
             bytes_total += chunk.size
@@ -65,6 +75,28 @@ class ZipStreamer
         stop_time: stop_time,
         bytes_sent: bytes_total,
         complete: download_complete)
+    end
+  end
+
+  private
+
+  def find_non_common_path_prefix!(files)
+    # so here we have a couple of files with a common filename
+    # This implies that the paths (including hostname) must not be the same
+    # Finding the first non-common postfix of a set of arrays is equal to the longest common prefix
+    # of the reversed arrays, plus one element (which is by definition )
+
+    # convert from http://example.com/a/coolfile.jpg to ["a", "example.com", "", "http:"]
+    # Drop the filename before we go since that is already known to be a duplicate
+    # and in any case it might have come from the content-disposition header and not the URI.
+    split_file_URI_paths = files.map {|f| f.uri.split("/")[0..-2].reverse }
+    number_of_duplicates = split_file_URI_paths.length
+    # iterate until we find a prefix length where they're all different
+    index = 0
+    index += 1 until split_file_URI_paths.map{|sp| sp.take(index)}.uniq.length == number_of_duplicates
+    # using the length we found, set the directory of each file while replacing slashes with underscores
+    files.each do |f|
+      f.directory = f.uri.split("/")[(-1-index)..-2].join("_")
     end
   end
 end
