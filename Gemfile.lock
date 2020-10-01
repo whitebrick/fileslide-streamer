@@ -46,7 +46,7 @@ GEM
     net-ssh (6.1.0)
     nio4r (2.5.4)
     public_suffix (4.0.6)
-    puma (5.0.2)
+    puma (4.3.6)
       nio4r (~> 2.0)
     rack (2.2.3)
     rack-protection (2.1.0)
@@ -93,7 +93,7 @@ DEPENDENCIES
   capistrano3-puma
   dotenv
   http
-  puma
+  puma (~> 4.3.5)
   rack
   rack-test
   rake
