@@ -15,7 +15,8 @@ group :development do
   gem "rspec"
   gem 'rack-test', require: 'rack/test'
   gem 'rubyzip'
-  gem "capistrano", "~> 3.14", require: false
-  gem "capistrano-bundler"
-  gem "capistrano-rbenv"
+  gem 'capistrano', "~> 3.14", require: false
+  gem 'capistrano-bundler'
+  gem 'capistrano-rbenv'
+  gem 'capistrano3-puma'
 end
