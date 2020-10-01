@@ -41,9 +41,21 @@ RSpec.describe FileslideStreamer do
       post '/download', {uri_list: []}.to_json
       expect(last_response.status).to eq 400
     end
+
     it 'fails with 400 if the request JSON does not contain a uri_list key' do
       post '/download', {file_name: 'files.zip'}.to_json
       expect(last_response.status).to eq 400
+    end
+
+    it 'fails with 400 if some of the uris in the request occur more than once' do
+      post '/download', {file_name: 'files.zip', uri_list: [
+        "http://localhost:9293/random_bytes1.bin",
+        "http://localhost:9293/random_bytes1.bin",
+        "http://localhost:9293/random_bytes2.bin",
+      ]}.to_json
+
+      expect(last_response.status).to eq 400
+      expect(last_response.body).to eq 'Duplicate filenames found'
     end
 
     it 'fails with 403 and the returned html if the upstream API does not authorize the download' do

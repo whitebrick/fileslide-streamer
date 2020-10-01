@@ -20,6 +20,7 @@ class FileslideStreamer < Sinatra::Base
     request_payload = JSON.parse(request.body.read, symbolize_names: true)
     zip_filename = request_payload.fetch(:file_name)
     uri_list = request_payload.fetch(:uri_list)
+    halt 400, 'Duplicate filenames found' unless uri_list.uniq.length == uri_list.length
 
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
