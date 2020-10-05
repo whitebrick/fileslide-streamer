@@ -29,13 +29,17 @@ cd /etc/nginx/conf.d/
 sudo nano custom_server.conf
 # fill with:
 # server {
-#   listen 80;
-#   location / {
-#     proxy_buffering off;
-#     proxy_pass http://127.0.0.1:9292;
+#         listen 80;
+#         listen [::]:80;
+#         access_log /var/log/nginx/reverse-access.log;
+#         error_log /var/log/nginx/reverse-error.log;
+#         proxy_buffering off;
+#         proxy_http_version 1.1;
+#         location / {
+#                     proxy_pass http://127.0.0.1:9292;
 #   }
 # }
-#
+
 sudo systemctl restart nginx
 # Now verify you can reach it with curl or something on port 80.
 
