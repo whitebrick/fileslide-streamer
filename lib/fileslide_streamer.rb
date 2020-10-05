@@ -62,7 +62,8 @@ class FileslideStreamer < Sinatra::Base
   rescue JSON::ParserError, KeyError => e
     halt 400
   rescue UpstreamAPI::UpstreamNotFoundError => e
-    halt 500, e.to_s
+    puts e.backtrace
+    halt 500, 'Error connecting to upstream'
   end
 
   def construct_error_message(failed_uris: )
