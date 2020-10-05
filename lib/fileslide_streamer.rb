@@ -58,7 +58,6 @@ class FileslideStreamer < Sinatra::Base
     # Pull in the URI contents and stream as zip
     http_body = zip_streamer.make_streaming_body
     headers = {
-      'Transfer-Encoding' => 'chunked',
       'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
