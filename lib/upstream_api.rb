@@ -22,7 +22,7 @@ class UpstreamAPI
   end
 
   def report(start_time:, stop_time: , bytes_sent:, complete: )
-    @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {
+    @http.post("#{UPSTREAM_API_LOCATION}/report", json: {
       start_time: start_time,
       stop_time: stop_time,
       bytes_sent: bytes_sent,
@@ -33,5 +33,4 @@ class UpstreamAPI
     # that we can do
     nil
   end
-
 end
