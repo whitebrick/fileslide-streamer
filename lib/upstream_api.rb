@@ -10,8 +10,8 @@ class UpstreamAPI
     @http = HTTP.timeout(connect: 5, read: 10) # both servers are on AWS so this is pretty generous
   end
 
-  def verify_uri_list(uri_list: )
-    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list}.to_json)
+  def verify_uri_list(uri_list:, file_name: )
+    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list, file_name: file_name}.to_json)
     unless auth_response == 200
       raise UpstreamNotFoundError
     end
