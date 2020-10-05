@@ -11,8 +11,8 @@ class UpstreamAPI
   end
 
   def verify_uri_list(uri_list:, file_name: )
-    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list, file_name: file_name}.to_json)
-    unless auth_response.status == 200
+    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list, file_name: file_name})
+    unless auth_response.status.ok?
       raise UpstreamNotFoundError
     end
     auth_body_json = JSON.parse(auth_response.to_s, symbolize_names: true)
