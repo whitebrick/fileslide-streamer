@@ -24,7 +24,7 @@ class FileslideStreamer < Sinatra::Base
 
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
-    verification_result = upstream.verify_uri_list(uri_list: uri_list)
+    verification_result = upstream.verify_uri_list(uri_list: uri_list, file_name: zip_filename)
     halt 403, verification_result[:unauthorized_html] unless verification_result[:authorized]
 
     # Do a head request to all the URIs to check they're available.
