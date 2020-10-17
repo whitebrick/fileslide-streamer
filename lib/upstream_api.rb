@@ -11,7 +11,7 @@ class UpstreamAPI
   end
 
   def verify_uri_list(uri_list:, file_name: )
-    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", json: {uri_list: uri_list, file_name: file_name})
+    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", form: {uri_list: uri_list.to_json})
     unless auth_response.status.ok?
       raise UpstreamNotFoundError
     end
@@ -22,7 +22,7 @@ class UpstreamAPI
   end
 
   def report(start_time:, stop_time: , bytes_sent:, complete: )
-    @http.post("#{UPSTREAM_API_LOCATION}/report", json: {
+    @http.post("#{UPSTREAM_API_LOCATION}/report", form: {
       start_time: start_time,
       stop_time: stop_time,
       bytes_sent: bytes_sent,

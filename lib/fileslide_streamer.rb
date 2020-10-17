@@ -16,16 +16,23 @@ class FileslideStreamer < Sinatra::Base
 
   post "/download" do
     # Parse the request
-    request.body.rewind
-    request_payload = JSON.parse(request.body.read, symbolize_names: true)
-    zip_filename = request_payload.fetch(:file_name)
-    uri_list = request_payload.fetch(:uri_list)
-    halt 400, 'Duplicate filenames found' unless uri_list.uniq.length == uri_list.length
+
+    puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
+    
+    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) && 
+      (!params[:uri_list].nil? && params[:uri_list].length>0)
+
+    zip_filename = params[:file_name]
+    uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
+
+    halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
 
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
     verification_result = upstream.verify_uri_list(uri_list: uri_list, file_name: zip_filename)
     halt 403, verification_result[:unauthorized_html] unless verification_result[:authorized]
+
+    puts "** URIs OK: #{uri_list}\n"
 
     # Do a head request to all the URIs to check they're available.
     # We do a range request the first byte instead of doing a HEAD request
@@ -37,6 +44,7 @@ class FileslideStreamer < Sinatra::Base
     uri_list.each do |uri|
       begin
         resp = availability_checking_http.get(uri)
+        puts "** availability_checking_http: #{uri} => #{resp.status}\n"
         unless [200,206].include? resp.status
           failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
         end
@@ -52,11 +60,16 @@ class FileslideStreamer < Sinatra::Base
       halt 502, construct_error_message(failed_uris: failed_uris)
     end
 
+    puts "** zip_streamer.files.size: #{zip_streamer.files.size}\n"
+
     # Deduplicate filenames if required
     zip_streamer.deduplicate_filenames!
 
     # Pull in the URI contents and stream as zip
     http_body = zip_streamer.make_streaming_body
+
+    puts "** http_body: #{http_body.inspect}\n"
+
     headers = {
       'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
@@ -65,7 +78,7 @@ class FileslideStreamer < Sinatra::Base
     }
     [200,headers,http_body]
   rescue JSON::ParserError, KeyError => e
-    halt 400
+    halt 400, 'uri_list is not a valid JSON array'
   rescue UpstreamAPI::UpstreamNotFoundError => e
     puts e.backtrace
     halt 500, 'Error connecting to upstream'
@@ -76,6 +89,7 @@ class FileslideStreamer < Sinatra::Base
     failed_uris.each do |f|
       resp << f.to_s
     end
+    puts resp
     resp
   end
 end

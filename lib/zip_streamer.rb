@@ -55,6 +55,7 @@ class ZipStreamer
       @files.each do |singlefile|
         zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
+          puts "zip.write_stored_file: ** #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
             bytes_total += chunk.size
             sink.write(chunk)

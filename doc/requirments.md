@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* A user makes a HTTP request directly to the app with 1 or more pre-signed file download URIs encoded as JSON
+* A user makes a HTTP post request directly to the app with 1 or more pre-signed file download URIs encoded as a JSON array
 * The app calls a REST API to ask if all of the specified URIs are authorized
 
 > The way to think about it is kind of a "Zip-As-A-Service" - just say you have given me secret links (or pre-signed URLs) to file1, file2 & file3 on wander.com. Effectively I am just passing on my secret links to a middle-man (this zip_download app) which uses these same links to download the files for me, zip them up and give me the resulting output zip file.
