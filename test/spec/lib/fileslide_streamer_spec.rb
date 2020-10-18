@@ -75,7 +75,8 @@ RSpec.describe FileslideStreamer do
         and_return({authorized: true, unauthorized_html: nil})
 
       post '/download', file_name: 'files.zip', uri_list: [
-        # hostnames ending with .invalid are guarantueed not to exist per RFC 6761
+        # http://example.invalid... preferred (shouldn't exist per RFC 6761)
+        # but some ISPs still respond with 200 so localhost:9999 used instead
         "http://localhost:9999/allowed_but_unavailable_file1",
         "http://localhost:9999/allowed_but_unavailable_file2",
         "http://localhost:9293/random_bytes1.bin",
