@@ -2,8 +2,11 @@
 
 ## Requirements
 
-* A user makes a HTTP request directly to the app with 1 or more pre-signed file download URIs encoded as JSON
-* The app calls a REST API to ask if all of the specified URIs are authorized
+* A client browser makes a HTTP POST request directly to the app with 2 form-urlencoded params:
+    * `file_name`: non-empty string comnforming to the Windows file name spec that will be used to name the resulting zip
+    * `uri_list`: non-empty JSON array with one or more unique URIs to (public or presigned) file downloads that will be zipped in the archive
+
+* The app calls a REST API with the same form-urlencoded `uri_list` JSON array to ask if all of the specified URIs are authorized
 
 > The way to think about it is kind of a "Zip-As-A-Service" - just say you have given me secret links (or pre-signed URLs) to file1, file2 & file3 on wander.com. Effectively I am just passing on my secret links to a middle-man (this zip_download app) which uses these same links to download the files for me, zip them up and give me the resulting output zip file.
 >

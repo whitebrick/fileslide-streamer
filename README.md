@@ -10,7 +10,7 @@ Install dependencies using `bundle install` and then start the server using `bun
 
 ## Testing
 
-To run the test suite, run `bundle exec rspec` from the root folder of the repo. For testing the zip streaming, the test suite covers starts up a second Puma process to deliver static files from spec/fixtures. You can extend this server with extra static files or custom endpoints as needed.
+To run the test suite, `cd test` then run `bundle exec rspec` from the root folder of the repo. For testing the zip streaming, the test suite covers starts up a second Puma process to deliver static files from spec/fixtures. You can extend this server with extra static files or custom endpoints as needed.
 
 ## Deployment
 
