@@ -56,3 +56,10 @@ sudo systemctl restart nginx
 # You may have to comment out the `bind` directive in shared/puma.rb after the first deploy (which generates that file)
 # but afterwards it should be fine
 ```
+
+# letsencrypt
+# just follow:
+#   to get the packages from yum instead of apt:
+# - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/SSL-on-amazon-linux-2.html#letsencrypt
+#   and then for the rest:
+# - https://www.nginx.com/blog/using-free-ssltls-certificates-from-lets-encrypt-with-nginx/
