@@ -21,8 +21,9 @@ class UpstreamAPI
     raise UpstreamNotFoundError
   end
 
-  def report(start_time:, stop_time: , bytes_sent:, complete: )
+  def report(uris:, start_time:, stop_time:, bytes_sent:, complete: )
     @http.post("#{UPSTREAM_API_LOCATION}/report", form: {
+      uris: uris.to_json,
       start_time: start_time,
       stop_time: stop_time,
       bytes_sent: bytes_sent,

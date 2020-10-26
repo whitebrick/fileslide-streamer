@@ -51,6 +51,7 @@ class ZipStreamer
       download_complete = false
       start_time = Time.now.utc
       bytes_total = 0
+      uris_written = []
       http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @files.each do |singlefile|
         zip.write_stored_file(singlefile.zip_name) do |sink|
@@ -61,6 +62,7 @@ class ZipStreamer
             sink.write(chunk)
           end
         end
+        uris_written << singlefile.uri
       end
       # If an exception happens during streaming, download_complete will never
       # become true and will be reported as `false`.
@@ -72,6 +74,7 @@ class ZipStreamer
       # an exception, notify upstream about the results
       stop_time = Time.now.utc
       UpstreamAPI.new.report(
+        uris: uris_written,
         start_time: start_time,
         stop_time: stop_time,
         bytes_sent: bytes_total,
