@@ -196,5 +196,11 @@ RSpec.describe FileslideStreamer do
       end
     end
 
+    context 'when streaming partial zips' do
+      it 'refuses if an invalid range is requested'
+      it 'does not fetch any extra checksums if all checksums are already known'
+      it 'fetches checksums for unknown files'
+      it 'fetches checksums in parallel for large files'
+    end
   end
 end
