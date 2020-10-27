@@ -222,9 +222,17 @@ RSpec.describe FileslideStreamer do
           expect(last_response.body).to eq 'Multipart ranges are not supported'
         end
 
-        it 'returns 416 if negative ranges are requested'
-        it 'returns the whole rest of the file if the end of the range is beyond the zip size'
-        it 'will not choke on end-less ranges'
+        it 'returns 416 if the start of the range is beyond the size of the zip' do
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+
+          header 'Range', 'bytes=123456-'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+          ].to_json
+
+          expect(last_response.status).to eq 416
+        end
 
         it 'falls back to whole file fetching if an inverse range is requested' do
           expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
@@ -239,6 +247,8 @@ RSpec.describe FileslideStreamer do
           expect(last_response.status).to eq 200
         end
 
+        it 'returns the whole rest of the file if the end of the range is beyond the zip size'
+        it 'will not choke on end-less ranges'
         it 'does not fetch any extra checksums if all checksums are already known'
         it 'fetches checksums for unknown files'
         it 'fetches checksums in parallel for large files'

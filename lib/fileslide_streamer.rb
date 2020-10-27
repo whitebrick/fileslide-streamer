@@ -28,9 +28,7 @@ class FileslideStreamer < Sinatra::Base
       [0, 0]
     end
 
-    halt 416, 'Negative ranges are not supported' if range_start < 0 || range_stop < 0
-
-    if range_stop < range_start
+    if range_stop && range_stop < range_start
       # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
       # HOWEVER it is also possible that this request was of shape "Range: bytes=123-", meaning
       # that they want all bytes from 123 until EOF. In that case we set it to a negative number to
@@ -101,6 +99,8 @@ class FileslideStreamer < Sinatra::Base
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
     }
+
+    halt 416, 'Start of range outside zip size' if range_start >= total_size
 
     # Create the body and any additional headers if required
     http_body = nil
