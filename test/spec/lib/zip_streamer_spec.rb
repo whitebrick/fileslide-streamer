@@ -5,21 +5,27 @@ RSpec.describe ZipStreamer do
     it 'uses the content-disposition value if there is one' do
       sf = ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: 'attachment; filename="filename.jpg"')
+        content_disposition: 'attachment; filename="filename.jpg"',
+        size: 123,
+        etag: nil)
       expect(sf.canonical_filename).to eq("filename.jpg")
     end
 
     it 'uses the URI basename if there is a content-disposition value but it does not contain a filename' do
       sf = ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: 'inline')
+        content_disposition: 'inline',
+        size: 123,
+        etag: nil)
       expect(sf.canonical_filename).to eq("coolfile.jpg")
     end
 
     it 'uses the URI basename if there is no content-disposition value' do
       sf = ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       expect(sf.canonical_filename).to eq("coolfile.jpg")
     end
   end
@@ -29,13 +35,19 @@ RSpec.describe ZipStreamer do
       zs = ZipStreamer.new
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: 'attachment; filename="first_filename.jpg"')
+        content_disposition: 'attachment; filename="first_filename.jpg"',
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/coolfile.jpg',
-        content_disposition: 'attachment; filename="second_filename.jpg"')
+        content_disposition: 'attachment; filename="second_filename.jpg"',
+        size: 123,
+        etag: nil)
       zs.deduplicate_filenames!
 
       expect(zs.files.map(&:zip_name).uniq.length).to eq 3
@@ -46,13 +58,19 @@ RSpec.describe ZipStreamer do
       zs = ZipStreamer.new
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/a/coolfile.jpg',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/b/coolfile.jpg',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'http://example.com/c/coolfile.jpg',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs.deduplicate_filenames!
 
       expect(zs.files.map(&:zip_name).uniq.length).to eq 3
@@ -64,10 +82,14 @@ RSpec.describe ZipStreamer do
       zs = ZipStreamer.new
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'https://data1.server1.com/a/b/c/document.doc',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'https://data1.server1.com/a/y/z/document.doc',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs.deduplicate_filenames!
 
       expect(zs.files.map(&:zip_name).uniq.length).to eq 2
@@ -78,13 +100,19 @@ RSpec.describe ZipStreamer do
       zs = ZipStreamer.new
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'https://data1.server1.com/a/b/c/document.doc',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'https://data1.server1.com/a/y/z/document.doc',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs << ZipStreamer::SingleFile.new(
         original_uri: 'https://data2.server1.com/a/y/z/document.doc',
-        content_disposition: nil)
+        content_disposition: nil,
+        size: 123,
+        etag: nil)
       zs.deduplicate_filenames!
 
       expect(zs.files.map(&:zip_name).uniq.length).to eq 3

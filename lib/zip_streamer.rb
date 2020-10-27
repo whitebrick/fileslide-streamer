@@ -5,7 +5,7 @@ class ZipStreamer
     attr_reader :uri, :canonical_filename
     attr_accessor :directory
 
-    def initialize(original_uri: , content_disposition: )
+    def initialize(original_uri: , content_disposition: , size: , etag: )
       @uri = original_uri
       @content_disposition = content_disposition
       # The canonical filename is the one from content-disposition if it's defined or 
