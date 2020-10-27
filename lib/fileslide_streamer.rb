@@ -19,6 +19,14 @@ class FileslideStreamer < Sinatra::Base
 
     puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
     
+    ranged_request = !request.env['HTTP_RANGE'].nil?
+    range_start, range_stop = if ranged_request
+      halt 400, 'Invalid Range header' unless request.env['HTTP_RANGE'].start_with? 'bytes='
+      halt 416, 'Multipart ranges are not supported' if request.env['HTTP_RANGE'].include? ','
+      byte_range_requested = request.env['HTTP_RANGE'][6..-1] # drop 'bytes=' prefix
+      byte_range_requested.split['='].map(&:to_i)
+    end
+
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) && 
       (!params[:uri_list].nil? && params[:uri_list].length>0)
 
@@ -66,11 +74,16 @@ class FileslideStreamer < Sinatra::Base
     zip_streamer.deduplicate_filenames!
 
     # Pull in the URI contents and stream as zip
-    http_body = zip_streamer.make_streaming_body
+    http_body = if ranged_request
+      zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
+    else
+      zip_streamer.make_complete_streaming_body
+    end
 
     puts "** http_body: #{http_body.inspect}\n"
 
     headers = {
+      'Accept-Ranges' => 'bytes',
       'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
@@ -80,7 +93,6 @@ class FileslideStreamer < Sinatra::Base
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   rescue UpstreamAPI::UpstreamNotFoundError => e
-    puts e.backtrace
     halt 500, 'Error connecting to upstream'
   end
 

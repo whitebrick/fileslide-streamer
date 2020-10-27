@@ -46,7 +46,7 @@ class ZipStreamer
     end
   end
 
-  def make_streaming_body
+  def make_complete_streaming_body
     ZipTricks::RackBody.new do |zip|
       download_complete = false
       start_time = Time.now.utc
@@ -90,6 +90,9 @@ class ZipStreamer
         bytes_sent: bytes_total,
         complete: download_complete)
     end
+  end
+
+  def make_partial_streaming_body(start:, stop:)
   end
 
   private

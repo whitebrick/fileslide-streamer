@@ -130,77 +130,101 @@ RSpec.describe FileslideStreamer do
           tf.unlink
         end
 
-      it 'streams the uris as a zip, stores checksums in Redis and reports to upstream' do
-        r = Redis.new
-        r.flushall
+        it 'streams the uris as a zip, stores checksums in Redis and reports to upstream' do
+          r = Redis.new
+          r.flushall
 
-        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
-          and_return({authorized: true, unauthorized_html: nil})
-        expect_any_instance_of(UpstreamAPI).to receive(:report)
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-        post '/download', file_name: 'three_files.zip', uri_list: [
-          "http://localhost:9293/random_bytes1.bin",
-          "http://localhost:9293/random_bytes2.bin",
-          "http://localhost:9293/random_bytes3.bin",
-        ].to_json
+          post '/download', file_name: 'three_files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin",
+            "http://localhost:9293/random_bytes3.bin",
+          ].to_json
 
-        expect(last_response.status).to eq 200
-        expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
-        # The received body should be a valid zip file with three items in it and the items
-        # should match the files in spec/fixtures
-        tf = Tempfile.new
-        tf << last_response.body
-        tf.flush
-        f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
-        f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
-        f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
-        Zip::File.open(tf) do | zip |
-          expect(zip.entries.length).to eq(3)
-          expect(zip.entries[0].name).to eq "random_bytes1.bin"
-          expect(zip.entries[0].size).to eq 1024
-          expect(zip.entries[0].get_input_stream.read).to eq f1
-          expect(zip.entries[1].name).to eq "random_bytes2.bin"
-          expect(zip.entries[1].size).to eq 2048
-          expect(zip.entries[1].get_input_stream.read).to eq f2
-          expect(zip.entries[2].name).to eq "random_bytes3.bin"
-          expect(zip.entries[2].size).to eq 4096
-          expect(zip.entries[2].get_input_stream.read).to eq f3
+          expect(last_response.status).to eq 200
+          expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
+          # The received body should be a valid zip file with three items in it and the items
+          # should match the files in spec/fixtures
+          tf = Tempfile.new
+          tf << last_response.body
+          tf.flush
+          f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+          f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+          f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
+          Zip::File.open(tf) do | zip |
+            expect(zip.entries.length).to eq(3)
+            expect(zip.entries[0].name).to eq "random_bytes1.bin"
+            expect(zip.entries[0].size).to eq 1024
+            expect(zip.entries[0].get_input_stream.read).to eq f1
+            expect(zip.entries[1].name).to eq "random_bytes2.bin"
+            expect(zip.entries[1].size).to eq 2048
+            expect(zip.entries[1].get_input_stream.read).to eq f2
+            expect(zip.entries[2].name).to eq "random_bytes3.bin"
+            expect(zip.entries[2].size).to eq 4096
+            expect(zip.entries[2].get_input_stream.read).to eq f3
+          end
+
+          expect(r.dbsize).to eq 3
+          expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+            etag: nil,
+            crc32: Zlib.crc32(f1)
+          }.to_json)
+          expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+            etag: nil,
+            crc32: Zlib.crc32(f2)
+          }.to_json)
+          expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+            etag: nil,
+            crc32: Zlib.crc32(f3)
+          }.to_json)
+        ensure
+          tf.unlink if tf
         end
 
-        expect(r.dbsize).to eq 3
-        expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
-          etag: nil,
-          crc32: Zlib.crc32(f1)
-        }.to_json)
-        expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
-          etag: nil,
-          crc32: Zlib.crc32(f2)
-        }.to_json)
-        expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
-          etag: nil,
-          crc32: Zlib.crc32(f3)
-        }.to_json)
-      ensure
-        tf.unlink if tf
+        it 'still reports to upstream even if there is an exception during streaming' do
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
+          expect_any_instance_of(ZipTricks::Streamer).to receive(:write_stored_file).and_raise(HTTP::Error.new("BOOM!"))
+
+          post '/download', file_name: 'one_file.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+          ].to_json
+        end
       end
 
-      it 'still reports to upstream even if there is an exception during streaming' do
-        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
-          and_return({authorized: true, unauthorized_html: nil})
-        expect_any_instance_of(UpstreamAPI).to receive(:report)
-        expect_any_instance_of(ZipTricks::Streamer).to receive(:write_stored_file).and_raise(HTTP::Error.new("BOOM!"))
+      context 'when streaming partial zips' do
+        it 'returns 400 if an invalid range header is requested' do
+          header 'Range', 'gimme all the bytes'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+          expect(last_response.status).to eq 400
+          expect(last_response.body).to eq 'Invalid Range header'
+        end
 
-        post '/download', file_name: 'one_file.zip', uri_list: [
-          "http://localhost:9293/random_bytes1.bin",
-        ].to_json
+        it 'returns 416 if a multipart range is requested' do
+          header 'Range', 'bytes=0-50, 100-150'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+          expect(last_response.status).to eq 416
+          expect(last_response.body).to eq 'Multipart ranges are not supported'
+        end
+
+        it 'returns 416 if the end of the range is beyond the zip size'
+        it 'falls back to whole file fetching if an inverse range is requested'
+        it 'does not fetch any extra checksums if all checksums are already known'
+        it 'fetches checksums for unknown files'
+        it 'fetches checksums in parallel for large files'
       end
-    end
 
-    context 'when streaming partial zips' do
-      it 'refuses if an invalid range is requested'
-      it 'does not fetch any extra checksums if all checksums are already known'
-      it 'fetches checksums for unknown files'
-      it 'fetches checksums in parallel for large files'
-    end
   end
 end
