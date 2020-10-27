@@ -54,15 +54,20 @@ class ZipStreamer
       uris_written = []
       http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @files.each do |singlefile|
+        checksummer = ZipTricks::StreamCRC32.new
         zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
           puts "zip.write_stored_file: ** #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
             bytes_total += chunk.size
+            checksummer << chunk
             sink.write(chunk)
           end
         end
         uris_written << singlefile.uri
+        FileslideStreamer.with_redis do |redis|
+          redis.set(singlefile.uri, {etag: nil, crc32: checksummer.to_i}.to_json)
+        end
       end
       # If an exception happens during streaming, download_complete will never
       # become true and will be reported as `false`.

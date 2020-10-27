@@ -1,5 +1,6 @@
 require 'spec_helper.rb'
 require 'zip'
+require 'zlib'
 
 RSpec.describe FileslideStreamer do
   def app
@@ -128,7 +129,10 @@ RSpec.describe FileslideStreamer do
         tf.unlink
       end
 
-      it 'streams the uris as a zip and reports to upstream' do
+      it 'streams the uris as a zip, stores checksums in Redis and reports to upstream' do
+        r = Redis.new
+        r.flushall
+
         expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
           and_return({authorized: true, unauthorized_html: nil})
         expect_any_instance_of(UpstreamAPI).to receive(:report)
@@ -146,11 +150,11 @@ RSpec.describe FileslideStreamer do
         tf = Tempfile.new
         tf << last_response.body
         tf.flush
+        f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+        f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+        f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
         Zip::File.open(tf) do | zip |
           expect(zip.entries.length).to eq(3)
-          f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
-          f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
-          f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
           expect(zip.entries[0].name).to eq "random_bytes1.bin"
           expect(zip.entries[0].size).to eq 1024
           expect(zip.entries[0].get_input_stream.read).to eq f1
@@ -161,6 +165,20 @@ RSpec.describe FileslideStreamer do
           expect(zip.entries[2].size).to eq 4096
           expect(zip.entries[2].get_input_stream.read).to eq f3
         end
+
+        expect(r.dbsize).to eq 3
+        expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+          etag: nil,
+          crc32: Zlib.crc32(f1)
+        }.to_json)
+        expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+          etag: nil,
+          crc32: Zlib.crc32(f2)
+        }.to_json)
+        expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+          etag: nil,
+          crc32: Zlib.crc32(f3)
+        }.to_json)
       ensure
         tf.unlink if tf
       end
