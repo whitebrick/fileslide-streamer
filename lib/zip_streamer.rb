@@ -2,12 +2,14 @@ class ZipStreamer
   attr_reader :files
 
   class SingleFile
-    attr_reader :uri, :canonical_filename
+    attr_reader :uri, :canonical_filename, :size, :etag
     attr_accessor :directory
 
     def initialize(original_uri: , content_disposition: , size: , etag: )
       @uri = original_uri
       @content_disposition = content_disposition
+      @size = size
+      @etag = etag
       # The canonical filename is the one from content-disposition if it's defined or 
       # the base filename from the URI if content-disposition was not defined. Multiple
       # files can have the same canonical filename.
@@ -43,6 +45,18 @@ class ZipStreamer
     duplicated_names.each do |dup_name|
       duplicated_name_files = @files.filter {|f| f.canonical_filename == dup_name}
       find_non_common_path_prefix!(duplicated_name_files) # will update the directory attribute of the files involved
+    end
+  end
+
+  def compute_total_size!
+    # warning: should only be called _after_ deduplication of filenames is complete; otherwise the computation
+    # might give incorrect results because the filenames will change (and therefore the total size, since the
+    # filenames are included in the zip file headers)
+    ZipTricks::SizeEstimator.estimate do |z|
+      @files.each do |singlefile|
+        p singlefile
+        z.add_stored_entry(filename: singlefile.zip_name, size: singlefile.size, use_data_descriptor: true)
+      end
     end
   end
 

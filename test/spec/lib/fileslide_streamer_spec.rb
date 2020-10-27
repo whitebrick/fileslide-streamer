@@ -118,6 +118,7 @@ RSpec.describe FileslideStreamer do
 
           expect(last_response.status).to eq 200
           expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"zero_files.zip\""
+          expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
 
           # The received body should be a valid zip file with zero items in it.
           tf = Tempfile.new
@@ -146,6 +147,8 @@ RSpec.describe FileslideStreamer do
 
           expect(last_response.status).to eq 200
           expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
+          expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
+
           # The received body should be a valid zip file with three items in it and the items
           # should match the files in spec/fixtures
           tf = Tempfile.new

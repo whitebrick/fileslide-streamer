@@ -58,7 +58,7 @@ class FileslideStreamer < Sinatra::Base
         end
         headers = resp.headers.to_h
         content_disposition = headers['Content-Disposition']
-        total_size = headers['Content-Range'].split('/')[1]
+        total_size = headers['Content-Range'].split('/')[1].to_i
         etag = headers['ETag']
         zip_streamer << ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition, size: total_size, etag: etag)
       rescue HTTP::ConnectionError
@@ -75,15 +75,8 @@ class FileslideStreamer < Sinatra::Base
 
     # Deduplicate filenames if required
     zip_streamer.deduplicate_filenames!
-
-    # Pull in the URI contents and stream as zip
-    http_body = if ranged_request
-      zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
-    else
-      zip_streamer.make_complete_streaming_body
-    end
-
-    puts "** http_body: #{http_body.inspect}\n"
+    # Compute size of complete zip. This is required even for ranged requests.
+    total_size = zip_streamer.compute_total_size!
 
     headers = {
       'Accept-Ranges' => 'bytes',
@@ -92,6 +85,24 @@ class FileslideStreamer < Sinatra::Base
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
     }
+
+    # Create the body and any additional headers if required
+    http_body = nil
+    if ranged_request
+      headers.merge!({
+        'Content-Range'  => "bytes #{range_start}-#{range_stop}/#{total_size}"
+        'Content-Length' => (1+range_stop-range_start).to_s
+      })
+      http_body = zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
+    else
+      headers.merge!({
+        'Content-Length' => total_size.to_s
+      })
+      http_body = zip_streamer.make_complete_streaming_body
+    end
+
+    puts "** http_body: #{http_body.inspect}\n"
+
     [200,headers,http_body]
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
