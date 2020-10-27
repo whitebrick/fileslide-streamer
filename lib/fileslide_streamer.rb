@@ -23,7 +23,23 @@ class FileslideStreamer < Sinatra::Base
       halt 400, 'Invalid Range header' unless request.env['HTTP_RANGE'].start_with? 'bytes='
       halt 416, 'Multipart ranges are not supported' if request.env['HTTP_RANGE'].include? ','
       byte_range_requested = request.env['HTTP_RANGE'][6..-1] # drop 'bytes=' prefix
-      byte_range_requested.split['='].map(&:to_i)
+      byte_range_requested.split('-').map(&:to_i)
+    else
+      [0, 0]
+    end
+
+    halt 416, 'Negative ranges are not supported' if range_start < 0 || range_stop < 0
+
+    if range_stop < range_start
+      # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
+      # HOWEVER it is also possible that this request was of shape "Range: bytes=123-", meaning
+      # that they want all bytes from 123 until EOF. In that case we set it to a negative number to
+      # indicate that it needs to be updated to the total zip size
+      if request.env['HTTP_RANGE'][-1] == '-'
+        range_stop = -1
+      else
+        ranged_request = false
+      end
     end
 
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) && 
@@ -89,8 +105,12 @@ class FileslideStreamer < Sinatra::Base
     # Create the body and any additional headers if required
     http_body = nil
     if ranged_request
+      if range_stop >= total_size || range_stop < 0
+        # straight from the HTTP RFC.
+        range_stop = total_size - 1
+      end
       headers.merge!({
-        'Content-Range'  => "bytes #{range_start}-#{range_stop}/#{total_size}"
+        'Content-Range'  => "bytes #{range_start}-#{range_stop}/#{total_size}",
         'Content-Length' => (1+range_stop-range_start).to_s
       })
       http_body = zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
