@@ -5,7 +5,6 @@ class FileslideStreamer < Sinatra::Base
     end
   end
 
-
   get "/" do
     redirect to('https://fileslide.io')
   end
@@ -105,7 +104,6 @@ class FileslideStreamer < Sinatra::Base
     failed_uris.each do |f|
       resp << f.to_s
     end
-    puts resp
     resp
   end
 
