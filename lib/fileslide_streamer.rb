@@ -92,4 +92,12 @@ class FileslideStreamer < Sinatra::Base
     puts resp
     resp
   end
+
+  def self.init!
+    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new }
+  end
+
+  def self.with_redis
+    @@redis_pool.with { |redis| yield(redis) }
+  end
 end
