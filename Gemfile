@@ -10,7 +10,7 @@ gem "dotenv"
 gem "zip_tricks"
 gem "http"
 gem "redis"
-
+gem "connection_pool"
 
 group :development do
   gem "rspec"
