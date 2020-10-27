@@ -108,26 +108,27 @@ RSpec.describe FileslideStreamer do
     end
 
     context 'when auth is OK'
-      it 'attaches the correct filename and reports to upstream' do
-        expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
-          and_return({authorized: true, unauthorized_html: nil})
-        expect_any_instance_of(UpstreamAPI).to receive(:report)
+      context 'streaming full files' do
+        it 'attaches the correct filename and reports to upstream' do
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-        post '/download', file_name: 'zero_files.zip', uri_list: [].to_json
+          post '/download', file_name: 'zero_files.zip', uri_list: [].to_json
 
-        expect(last_response.status).to eq 200
-        expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"zero_files.zip\""
+          expect(last_response.status).to eq 200
+          expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"zero_files.zip\""
 
-        # The received body should be a valid zip file with zero items in it.
-        tf = Tempfile.new
-        tf << last_response.body
-        tf.flush
-        Zip::File.open(tf) do | zip |
-          expect(zip.entries.length).to eq(0)
+          # The received body should be a valid zip file with zero items in it.
+          tf = Tempfile.new
+          tf << last_response.body
+          tf.flush
+          Zip::File.open(tf) do | zip |
+            expect(zip.entries.length).to eq(0)
+          end
+        ensure
+          tf.unlink
         end
-      ensure
-        tf.unlink
-      end
 
       it 'streams the uris as a zip, stores checksums in Redis and reports to upstream' do
         r = Redis.new
@@ -193,5 +194,7 @@ RSpec.describe FileslideStreamer do
           "http://localhost:9293/random_bytes1.bin",
         ].to_json
       end
+    end
+
   end
 end
