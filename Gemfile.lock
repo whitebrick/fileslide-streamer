@@ -54,6 +54,7 @@ GEM
     rack-test (1.1.0)
       rack (>= 1.0, < 3)
     rake (13.0.1)
+    redis (4.2.2)
     rspec (3.9.0)
       rspec-core (~> 3.9.0)
       rspec-expectations (~> 3.9.0)
@@ -97,6 +98,7 @@ DEPENDENCIES
   rack
   rack-test
   rake
+  redis
   rspec
   rubyzip
   sinatra

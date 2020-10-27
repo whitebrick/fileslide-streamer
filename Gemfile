@@ -9,6 +9,7 @@ gem "puma", "~> 4.3.5"
 gem "dotenv"
 gem "zip_tricks"
 gem "http"
+gem "redis"
 
 
 group :development do
