@@ -309,6 +309,11 @@ RSpec.describe FileslideStreamer do
           expect(last_response.status).to eq 206
           first_partial_body = last_response.body.dup
 
+          allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+
           header 'Range', 'bytes=1235-'
           post '/download', file_name: 'files.zip', uri_list: [
             "http://localhost:9293/random_bytes1.bin",
@@ -322,8 +327,37 @@ RSpec.describe FileslideStreamer do
           Timecop.return
         end
 
-        it 'returns the whole rest of the file if the end of the range is beyond the zip size'
-        it 'will not choke on end-less ranges'
+        it 'returns the whole rest of the file if the end of the range is beyond the zip size' do
+          now = Time.now
+          Timecop.freeze(now) # otherwise the modification times of files in the zip will differ
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 200
+          full_response_body = last_response.body.dup
+
+          allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+          header 'Range', 'bytes=0-123456'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 206
+          expect(last_response.body.length).to eq full_response_body.length
+          expect(last_response.body).to eq full_response_body
+          Timecop.return
+        end
+
         it 'does not fetch any extra checksums if all checksums are already known'
         it 'fetches checksums for unknown files'
         it 'fetches checksums in parallel for large files'
