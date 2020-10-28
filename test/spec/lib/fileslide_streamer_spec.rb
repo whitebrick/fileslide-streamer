@@ -252,7 +252,8 @@ RSpec.describe FileslideStreamer do
         end
 
         it 'returns the whole file for range "0-"' do
-          Timecop.freeze(Time.now) # otherwise the modification times of files in the zip will differ
+          now = Time.now
+          Timecop.freeze(now) # otherwise the modification times of files in the zip will differ
           expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
@@ -263,6 +264,7 @@ RSpec.describe FileslideStreamer do
           ].to_json
 
           expect(last_response.status).to eq 200
+          full_response_body = last_response.body.dup
 
           allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
@@ -277,6 +279,46 @@ RSpec.describe FileslideStreamer do
           expect(last_response.status).to eq 206
           expect(last_response.body.length).to eq full_response_body.length
           expect(last_response.body).to eq full_response_body
+          Timecop.return
+        end
+
+        it 'returns ranges that can sum to the whole response' do
+          Timecop.freeze(Time.now) # otherwise the modification times of files in the zip will differ
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 200
+          full_response_body = last_response.body.dup
+
+          allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+          header 'Range', 'bytes=0-1234'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 206
+          first_partial_body = last_response.body.dup
+
+          header 'Range', 'bytes=1235-'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 206
+          second_partial_body = last_response.body.dup
+          expect(first_partial_body + second_partial_body).to eq full_response_body
+
           Timecop.return
         end
 
