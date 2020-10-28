@@ -29,6 +29,32 @@ class ZipStreamer
     end
   end
 
+  class StreamingBody
+    def initialize(segments: , start:, stop:)
+      @segments = segments
+      @start = start
+      @stop = stop
+    end
+
+    def each
+      http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
+      @segments.each do |segment|
+        case segment
+        when String
+          yield segment
+        when SingleFile
+          resp = http.get(segment.uri)
+          unless resp.status.success?
+            raise HTTP::Error.new("Error when downloading ")
+          end
+          resp.body.each do |chunk|
+            yield(chunk)
+          end
+        end
+      end
+    end
+  end
+
   def initialize
     @files = []
   end
@@ -55,7 +81,6 @@ class ZipStreamer
     # filenames are included in the zip file headers)
     ZipTricks::SizeEstimator.estimate do |z|
       @files.each do |singlefile|
-        p singlefile
         z.add_stored_entry(filename: singlefile.zip_name, size: singlefile.size, use_data_descriptor: true)
       end
     end
@@ -108,8 +133,37 @@ class ZipStreamer
   end
 
   def make_partial_streaming_body(start:, stop:)
+    # To efficiently make a range request into a zip archive we reconstruct it first,
+    # simulating the files with placeholder objects. To do this, we need to have the checksums
+    # available so we fetch those first.
     update_files_with_checksums!
-    # todo: interval sequence
+    # Now that everything has checksums, we can create a stream of segments:
+    zip_segments = []
+    string_capturer = StringIO.new
+    string_capturer.set_encoding(Encoding::BINARY)
+    zipstreamer = ZipTricks::Streamer.new(ZipTricks::WriteAndTell.new(string_capturer))
+    @files.each do |file|
+      # local header
+      string_capturer.truncate(0)
+      string_capturer.rewind
+      zipstreamer.add_stored_entry(filename: file.zip_name, size: 0) # size will be written later
+      zip_segments << string_capturer.string.dup
+      # the file itself
+      zipstreamer.simulate_write(file.size)
+      zip_segments << file
+      # the data descriptor "footer" containing the checksum and sizes
+      string_capturer.truncate(0)
+      string_capturer.rewind
+      zipstreamer.update_last_entry_and_write_data_descriptor(crc32: file.crc32, compressed_size: file.size, uncompressed_size: file.size)
+      zip_segments << string_capturer.string.dup
+    end
+    # now the central directory and EOCD
+    string_capturer.truncate(0)
+    string_capturer.rewind
+    zipstreamer.close
+    zip_segments << string_capturer.string.dup
+    # Converting the segments into a range:
+    StreamingBody.new(segments: zip_segments, start: start, stop: stop)
   end
 
   private

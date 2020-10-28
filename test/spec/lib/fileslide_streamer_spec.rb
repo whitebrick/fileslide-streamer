@@ -1,6 +1,7 @@
 require 'spec_helper.rb'
 require 'zip'
 require 'zlib'
+require 'timecop'
 
 RSpec.describe FileslideStreamer do
   def app
@@ -248,6 +249,35 @@ RSpec.describe FileslideStreamer do
           ].to_json
 
           expect(last_response.status).to eq 200
+        end
+
+        it 'returns the whole file for range "0-"' do
+          Timecop.freeze(Time.now) # otherwise the modification times of files in the zip will differ
+          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 200
+
+          allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+          header 'Range', 'bytes=0-'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 206
+          expect(last_response.body.length).to eq full_response_body.length
+          expect(last_response.body).to eq full_response_body
+          Timecop.return
         end
 
         it 'returns the whole rest of the file if the end of the range is beyond the zip size'

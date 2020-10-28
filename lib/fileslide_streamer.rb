@@ -28,14 +28,18 @@ class FileslideStreamer < Sinatra::Base
       [0, 0]
     end
 
-    if range_stop && range_stop < range_start
-      # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
-      # HOWEVER it is also possible that this request was of shape "Range: bytes=123-", meaning
-      # that they want all bytes from 123 until EOF. In that case we set it to a negative number to
-      # indicate that it needs to be updated to the total zip size
-      if request.env['HTTP_RANGE'][-1] == '-'
-        range_stop = -1
-      else
+    if ranged_request
+      if range_stop.nil?
+        # It is possible that this request was of shape "Range: bytes=123-", meaning
+        # that they want all bytes from 123 until EOF. In that case we set it to a negative number to
+        # indicate that it needs to be updated to the total zip size
+        if request.env['HTTP_RANGE'][-1] == '-'
+          range_stop = -1
+        else
+          halt 416, 'Range could not be parsed correctly'
+        end
+      elsif range_stop < range_start
+        # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
         ranged_request = false
       end
     end
@@ -122,8 +126,8 @@ class FileslideStreamer < Sinatra::Base
     end
 
     puts "** http_body: #{http_body.inspect}\n"
-
-    [200,headers,http_body]
+    response_code = ranged_request ? 206 : 200
+    [response_code,headers,http_body]
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   rescue UpstreamAPI::UpstreamNotFoundError => e
