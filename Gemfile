@@ -11,12 +11,12 @@ gem "zip_tricks"
 gem "http"
 gem "redis"
 gem "connection_pool"
-gem "interval_response"
 
 group :development do
   gem "rspec"
   gem 'rack-test', require: 'rack/test'
   gem 'rubyzip'
+  gem 'timecop'
   gem 'capistrano', "~> 3.14", require: false
   gem 'capistrano-bundler'
   gem 'capistrano-rbenv'
