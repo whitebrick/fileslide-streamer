@@ -40,10 +40,6 @@ GEM
       ffi-compiler (>= 1.0, < 2.0)
     i18n (1.8.5)
       concurrent-ruby (~> 1.0)
-    interval_response (0.1.4)
-      measurometer
-      rack
-    measurometer (1.1.1)
     mustermann (1.1.1)
       ruby2_keywords (~> 0.0.1)
     net-scp (3.0.0)
@@ -101,7 +97,6 @@ DEPENDENCIES
   connection_pool
   dotenv
   http
-  interval_response
   puma (~> 4.3.5)
   rack
   rack-test
