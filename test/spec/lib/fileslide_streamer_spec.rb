@@ -172,14 +172,17 @@ RSpec.describe FileslideStreamer do
 
           expect(r.dbsize).to eq 3
           expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+            state: "done",
             etag: nil,
             crc32: Zlib.crc32(f1)
           }.to_json)
           expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+            state: "done",
             etag: nil,
             crc32: Zlib.crc32(f2)
           }.to_json)
           expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+            state: "done",
             etag: nil,
             crc32: Zlib.crc32(f3)
           }.to_json)

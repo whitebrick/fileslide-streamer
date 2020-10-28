@@ -3,7 +3,7 @@ class ZipStreamer
 
   class SingleFile
     attr_reader :uri, :canonical_filename, :size, :etag
-    attr_accessor :directory
+    attr_accessor :directory, :crc32
 
     def initialize(original_uri: , content_disposition: , size: , etag: )
       @uri = original_uri
@@ -21,6 +21,7 @@ class ZipStreamer
         @canonical_filename = File.basename(URI.parse(original_uri).path)
       end
       @directory = ""
+      @crc32 = nil
     end
 
     def zip_name
@@ -85,7 +86,7 @@ class ZipStreamer
         end
         uris_written << singlefile.uri
         FileslideStreamer.with_redis do |redis|
-          redis.set(singlefile.uri, {etag: current_etag, crc32: checksummer.to_i}.to_json)
+          redis.set(singlefile.uri, {state: "done", etag: current_etag, crc32: checksummer.to_i}.to_json)
         end
       end
       # If an exception happens during streaming, download_complete will never
@@ -107,9 +108,50 @@ class ZipStreamer
   end
 
   def make_partial_streaming_body(start:, stop:)
+    update_files_with_checksums!
+    # todo: interval sequence
   end
 
   private
+
+  def update_files_with_checksums!
+    files_without_checksums = []
+    files_with_pending_checksums = []
+    all_uris = @files.map(&:uri)
+    all_values = FileslideStreamer.with_redis do |redis|
+      redis.mget(all_uris)
+    end
+
+    @files.each_with_index do |file,i|
+      data = all_values[i]
+      if data.nil?
+        # file has never been seen yet
+        files_needing_checksums << file
+        next
+      end
+      parsed_data = JSON.parse(data, symbolize_names: true)
+      if parsed_data.fetch(:etag) != file.etag
+        # file has been seen already, but the etag changed
+        files_needing_checksums << file
+        next
+      end
+      if parsed_data.fetch(:state) != "done"
+        # file is being processed somewhere else, possibly on another server
+        files_with_pending_checksums << file
+        next
+      end
+      file.crc32 = parsed_data.fetch(:crc32)
+    end
+    # TODO: dispatch many threads
+  end
+
+  def fetch_single_checksum
+    # todo: dispatch threads for checksumming
+  end
+
+  def wait_for_single_checksum
+    # todo: implement redis polling thread
+  end
 
   def find_non_common_path_prefix!(files)
     # so here we have a couple of files with a common filename
