@@ -37,19 +37,64 @@ class ZipStreamer
     end
 
     def each
-      http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @segments.each do |segment|
-        case segment
-        when String
-          yield segment
-        when SingleFile
-          resp = http.get(segment.uri)
-          unless resp.status.success?
-            raise HTTP::Error.new("Error when downloading ")
+        if @stop < 0
+          break # stop processing this request, we're done
+        end
+        if segment.size < start
+          # the range requested starts after this segment, so we can skip this
+          # segment entirely
+          @start -= segment.size
+          @stop  -= segment.size
+          next
+        elsif @start == 0 && segment.size <= @stop
+          # the segment is entirely within the range
+          case segment
+          when String
+            yield segment
+          when SingleFile
+            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
+            resp = http.get(segment.uri)
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            resp.body.each do |chunk|
+              yield(chunk)
+            end
           end
-          resp.body.each do |chunk|
-            yield(chunk)
+          # start remains the same (ie zero) and stop gets decremented with the amount of bytes
+          # we just sent out
+          @stop -= segment.size
+        elsif segment.size <= @stop
+          # the segment starts at a byte other than zero and runs to the end of the segment
+          case segment
+          when String
+            yield segment[@start..-1]
+          when SingleFile
+            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"})
+            resp = http.get(segment.uri)
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            resp.body.each do |chunk|
+              yield(chunk)
+            end
           end
+          # stop gets decremented by however many files we sent out, start becomes 0 because we need to continue
+          # with the next segment from its start
+          @stop -= (segment.size - @start)
+          @start = 0
+        else
+          # both start and stop fall in this segment
+          case segment
+          when String
+            yield segment[@start..@stop]
+          when SingleFile
+            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{stop}"})
+            resp = http.get(segment.uri)
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            resp.body.each do |chunk|
+              yield(chunk)
+            end
+          end
+          # we're done here!
+          break
         end
       end
     end
@@ -98,9 +143,7 @@ class ZipStreamer
         checksummer = ZipTricks::StreamCRC32.new
         zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
-          unless resp.status.success?
-            raise HTTP::Error.new("Error when downloading ")
-          end
+          raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
           current_etag = resp.headers["ETag"]
           puts "zip.write_stored_file: ** #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
