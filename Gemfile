@@ -11,6 +11,7 @@ gem "zip_tricks"
 gem "http"
 gem "redis"
 gem "connection_pool"
+gem "interval_response"
 
 group :development do
   gem "rspec"
