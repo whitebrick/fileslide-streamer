@@ -200,7 +200,7 @@ class ZipStreamer
       # local header
       string_capturer.truncate(0)
       string_capturer.rewind
-      zipstreamer.add_stored_entry(filename: file.zip_name, size: 0) # size will be written later
+      zipstreamer.add_stored_entry(filename: file.zip_name, size: 0, use_data_descriptor: true) # size will be written later
       zip_segments << string_capturer.string.dup
       # the file itself
       zipstreamer.simulate_write(file.size)
