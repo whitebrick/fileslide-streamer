@@ -1,4 +1,12 @@
+require 'thwait'
+
 class ZipStreamer
+  CHECKSUMMING_TIMEOUT = 30 # seconds
+
+  NotYetAvailable = Class.new(StandardError)
+  ChecksummingError = Class.new(StandardError)
+  ChecksummingTimeout = Class.new(ChecksummingError)
+
   attr_reader :files
 
   class SingleFile
@@ -205,14 +213,14 @@ class ZipStreamer
     string_capturer.rewind
     zipstreamer.close
     zip_segments << string_capturer.string.dup
-    # Converting the segments into a range:
+    # Combining the segments into a something that can be streamed and can have a range applied:
     StreamingBody.new(segments: zip_segments, start: start, stop: stop)
   end
 
   private
 
   def update_files_with_checksums!
-    files_without_checksums = []
+    files_needing_checksums = []
     files_with_pending_checksums = []
     all_uris = @files.map(&:uri)
     all_values = FileslideStreamer.with_redis do |redis|
@@ -226,28 +234,132 @@ class ZipStreamer
         files_needing_checksums << file
         next
       end
-      parsed_data = JSON.parse(data, symbolize_names: true)
-      if parsed_data.fetch(:etag) != file.etag
-        # file has been seen already, but the etag changed
-        files_needing_checksums << file
-        next
-      end
-      if parsed_data.fetch(:state) != "done"
+      parsed_data = JSON.parse(data, symbolize_names: true) rescue nil
+      if parsed_data.fetch(:state,nil) != "done"
         # file is being processed somewhere else, possibly on another server
         files_with_pending_checksums << file
         next
       end
+      if parsed_data.fetch(:etag,nil) != file.etag
+        # file has been seen already, but the etag changed. Invalidate the data ASAP and queue up
+        # a recalculation.
+        FileslideStreamer.with_redis do |redis|
+          redis.del(file.uri)
+        end
+        files_needing_checksums << file
+        next
+      end
+      # we know that state == "done" at this point, so the crc must be set
       file.crc32 = parsed_data.fetch(:crc32)
     end
-    # TODO: dispatch many threads
+    # Now we dispatch as many threads as we need to find the checksums. Yes, this is potentially many threads
+    # and this is usually not ideal for Ruby. However, the threads will spend the vast majority of their time sleeping
+    # or waiting on I/O and therefore won't be taking up the GVL. In the case that all checksums were already known,
+    # the amount of work threads needed is zero and we skip the whole thing.
+    number_of_work_threads_remaining = files_with_pending_checksums.length + files_needing_checksums.length
+    if number_of_work_threads_remaining > 0
+      checksumming_threads = files_needing_checksums.map do |file|
+        Thread.new do
+          fetch_single_checksum(uri: file.uri, size: file.size)
+        end
+      end
+      polling_threads = files_with_pending_checksums.map do |file|
+        Thread.new do
+          wait_for_single_checksum(uri: file.uri)
+        end
+      end
+      timeout_thread = Thread.new { sleep CHECKSUMMING_TIMEOUT }
+      waiter = ThreadsWait.new(checksumming_threads + polling_threads + [timeout_thread])
+      # number_of_work_threads_remaining starts out as the total number of threads waited on minus one (the timeout thread)
+      # Every time a thread finishes there are a few options:
+      # - It's the timeout thread. This means the whole operation has timed out. We raise ChecksummingTimeout and return 500; the
+      #   other threads have timeouts as well and will finish in due course.
+      # - It's a work thread and there's more work since number_of_work_threads_remaining is higher than zero. Continue the loop
+      # - It's a work thread and number_of_work_threads_remaining is zero. The only remaining thread must be the timeout thread
+      #   so we finish and just let the timeout thread be.
+      while number_of_work_threads_remaining > 0
+        t = waiter.next_wait
+        raise ChecksummingTimeout.new if t == timeout_thread
+        number_of_work_threads_remaining -= 1
+      end
+
+      # Now all checksum-related threads are done and the checksums for each file SHOULD be in redis. If this is not the case
+      # for any of them, some of them errored out.
+      all_values = FileslideStreamer.with_redis do |redis|
+        redis.mget(all_uris)
+      end
+      @files.each_with_index do |file,i|
+        data = all_values[i]
+        parsed_data = JSON.parse(data, symbolize_names: true) rescue nil
+        raise ChecksummingError if parsed_data.nil?
+        raise ChecksummingError unless parsed_data.fetch(:state,nil) == "done"
+        # we know that state == "done" at this point, so the crc must be set
+        file.crc32 = parsed_data.fetch(:crc32)
+      end
+    end
   end
 
-  def fetch_single_checksum
-    # todo: dispatch threads for checksumming
+  # This method is called inside a separate thread when the state for a certain URI was "pending". This means that another
+  # thread is already checksumming the file. To prevent multiple downloads etc, we don't re-download the thread but rather just
+  # poll the redis until the value becomes available (when checksumming finishes succesfully) or becomes `nil` (when checksumming
+  # failed)
+  def fetch_single_checksum(uri:, size: )
+    try_claim_key = FileslideStreamer.with_redis do |redis|
+      redis.set(uri, {state: "pending"}.to_json, ex: CHECKSUMMING_TIMEOUT, nx: true)
+    end
+    if try_claim_key
+      begin
+        checksummer = ZipTricks::StreamCRC32.new
+        http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
+        resp = http.get(uri)
+        raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
+        etag = resp.headers["ETag"]
+        resp.body.each do |chunk|
+          checksummer << chunk
+        end
+        FileslideStreamer.with_redis do |redis|
+          redis.set(uri, {state: "done", etag: etag, crc32: checksummer.to_i}.to_json)
+        end
+      rescue Exception => e
+        # Something went wrong; we should try to relinquish our claim on the Redis key as soon as possible
+        # so that another request won't be stuck waiting for it. Also, while usually it's not a good idea to
+        # rescue Exception directly instead of StandardError, we reraise it so it should be fine.
+        FileslideStreamer.with_redis do |redis|
+          redis.del(uri)
+        end
+        raise e
+      end
+    else
+      # between the time we first checked and now, another request already claimed this key and
+      # spun off a thread to calculate the checksum. Instead of computing it another time we poll the
+      # redis instead, just as if it had already been set during the first check.
+      wait_for_single_checksum(uri: uri)
+    end
   end
 
-  def wait_for_single_checksum
-    # todo: implement redis polling thread
+  def fetch_checksum_part(uri:, start:, stop:)
+  end
+
+  # This method is called inside a separate thread when the state for a certain URI was "pending". This means that another
+  # thread is already checksumming the file. To prevent multiple downloads etc, we don't re-download the thread but rather just
+  # poll the redis until the value becomes available (when checksumming finishes succesfully) or becomes `nil` (when checksumming
+  # failed)
+  def wait_for_single_checksum(uri:)
+    # Try every 2 seconds for 30 seconds, with random jitter applied so that many threads don't stampede the Redis
+    Retriable.retriable(on: NotYetAvailable, base_interval: 2, multiplier: 1, tries: 20, max_elapsed_time: 30) do
+      data = FileslideStreamer.with_redis do |redis|
+        redis.get(uri)
+      end
+      parsed_data = JSON.parse(data, symbolize_names: true)
+      if parsed_data.fetch[:state] == "pending"
+        raise NotYetAvailable.new
+      end
+      # if the key was nil, the checksumming failed for some reason and we have no reason to believe retrying would help
+      # if the state was anything other than "pending", the checksumming thread is done and on the next pass we'll finish
+      # in either case we are done with checking redis and can let the thread finish
+    end
+  rescue TypeError
+    # Thrown when trying to json parse a `nil`. See comments above.
   end
 
   def find_non_common_path_prefix!(files)

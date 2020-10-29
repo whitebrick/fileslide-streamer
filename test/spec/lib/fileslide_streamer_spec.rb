@@ -328,6 +328,8 @@ RSpec.describe FileslideStreamer do
         end
 
         it 'returns the whole rest of the file if the end of the range is beyond the zip size' do
+          r = Redis.new
+          r.flushall
           now = Time.now
           Timecop.freeze(now) # otherwise the modification times of files in the zip will differ
           expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
@@ -345,6 +347,7 @@ RSpec.describe FileslideStreamer do
           allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
           allow_any_instance_of(UpstreamAPI).to receive(:report)
+          expect(Thread).not_to receive(:new) # all checksums already known
 
           header 'Range', 'bytes=0-123456'
           post '/download', file_name: 'files.zip', uri_list: [
@@ -358,9 +361,40 @@ RSpec.describe FileslideStreamer do
           Timecop.return
         end
 
-        it 'does not fetch any extra checksums if all checksums are already known'
-        it 'fetches checksums for unknown files'
-        it 'fetches checksums in parallel for large files'
+        it 'fetches checksums for unknown files' do
+          r = Redis.new
+          r.flushall
+          allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+            and_return({authorized: true, unauthorized_html: nil})
+          allow_any_instance_of(UpstreamAPI).to receive(:report)
+          expect_any_instance_of(ZipStreamer).to receive(:fetch_single_checksum).exactly(2).times.and_call_original
+
+          header 'Range', 'bytes=0-'
+          post '/download', file_name: 'files.zip', uri_list: [
+            "http://localhost:9293/random_bytes1.bin",
+            "http://localhost:9293/random_bytes2.bin"
+          ].to_json
+
+          expect(last_response.status).to eq 206
+          # The received body should be a valid zip file with three items in it and the items
+          # should match the files in spec/fixtures
+          tf = Tempfile.new
+          tf << last_response.body
+          tf.flush
+          f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+          f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+          Zip::File.open(tf) do | zip |
+            expect(zip.entries.length).to eq(2)
+            expect(zip.entries[0].name).to eq "random_bytes1.bin"
+            expect(zip.entries[0].size).to eq 1024
+            expect(zip.entries[0].get_input_stream.read).to eq f1
+            expect(zip.entries[1].name).to eq "random_bytes2.bin"
+            expect(zip.entries[1].size).to eq 2048
+            expect(zip.entries[1].get_input_stream.read).to eq f2
+          end
+
+          expect(r.dbsize).to eq 2
+        end
       end
 
   end

@@ -132,6 +132,13 @@ class FileslideStreamer < Sinatra::Base
     halt 400, 'uri_list is not a valid JSON array'
   rescue UpstreamAPI::UpstreamNotFoundError => e
     halt 500, 'Error connecting to upstream'
+  rescue ZipStreamer::ChecksummingError => e
+    puts e.backtrace
+    halt 500, 'Error occurred during checksum computation'
+  rescue Exception => e
+    p e
+    puts e.backtrace
+    raise e
   end
 
   def construct_error_message(failed_uris: )

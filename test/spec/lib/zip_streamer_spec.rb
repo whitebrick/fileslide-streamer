@@ -123,4 +123,11 @@ RSpec.describe ZipStreamer do
         ]
     end
   end
+
+  context 'when fetching checksums' do
+    it 'does not fetch any extra checksums if all files are already in Redis'
+    it 'will fetch checksums not in Redis yet'
+    it 'will poll for checksums if the state is "pending"'
+    it 'will fetch checksums in parallel if required'
+  end
 end
