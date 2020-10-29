@@ -1,7 +1,9 @@
 require 'thwait'
+require 'zlib'
 
 class ZipStreamer
   CHECKSUMMING_TIMEOUT = 30 # seconds
+  CHECKSUMMING_CHUNK_SIZE = 512 * 1024 * 1024 # chunk of 512 MB, about 5 sec/chunk?
 
   NotYetAvailable = Class.new(StandardError)
   ChecksummingError = Class.new(StandardError)
@@ -309,16 +311,15 @@ class ZipStreamer
     end
     if try_claim_key
       begin
-        checksummer = ZipTricks::StreamCRC32.new
-        http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
-        resp = http.get(uri)
-        raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
-        etag = resp.headers["ETag"]
-        resp.body.each do |chunk|
-          checksummer << chunk
+        ranges = RangeUtils.split_range_into_subranges_of(0..(size-1), CHECKSUMMING_CHUNK_SIZE)
+        threads = ranges.map do |range|
+          Thread.new { fetch_checksum_part(uri: uri,range: range) }
         end
+        results = threads.map(&:value)
+        checksum = results.reduce(Zlib.crc32('')) {|acc,n| Zlib.crc32_combine(acc,n[0], n[1]) }
+        etag = results.first[2]
         FileslideStreamer.with_redis do |redis|
-          redis.set(uri, {state: "done", etag: etag, crc32: checksummer.to_i}.to_json)
+          redis.set(uri, {state: "done", etag: etag, crc32: checksum}.to_json)
         end
       rescue Exception => e
         # Something went wrong; we should try to relinquish our claim on the Redis key as soon as possible
@@ -337,7 +338,15 @@ class ZipStreamer
     end
   end
 
-  def fetch_checksum_part(uri:, start:, stop:)
+  def fetch_checksum_part(uri:, range: )
+    checksummer = ZipTricks::StreamCRC32.new
+    http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{range.begin}-#{range.end}"})
+    resp = http.get(uri)
+    raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
+    resp.body.each do |chunk|
+      checksummer << chunk
+    end
+    [checksummer.to_i, RangeUtils.size_from_range(range), resp.headers["ETag"]]
   end
 
   # This method is called inside a separate thread when the state for a certain URI was "pending". This means that another
