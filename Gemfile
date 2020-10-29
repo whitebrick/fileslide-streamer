@@ -12,6 +12,7 @@ gem "http"
 gem "redis"
 gem "connection_pool"
 gem "retriable"
+gem "range_utils"
 
 group :development do
   gem "rspec"
