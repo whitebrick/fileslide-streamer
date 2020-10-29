@@ -11,6 +11,7 @@ gem "zip_tricks"
 gem "http"
 gem "redis"
 gem "connection_pool"
+gem "retriable"
 
 group :development do
   gem "rspec"
