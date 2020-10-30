@@ -14,12 +14,7 @@ class FileslideStreamer < Sinatra::Base
   end
 
   get "/download" do
-    p request.env
-    p params
-    'borp'
-  end
-
-  post "/download" do
+  # post "/download" do
     # Parse the request
 
     puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
