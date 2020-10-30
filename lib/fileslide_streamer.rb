@@ -5,7 +5,6 @@ class FileslideStreamer < Sinatra::Base
     end
   end
 
-
   get "/" do
     redirect to('https://fileslide.io')
   end
@@ -19,6 +18,32 @@ class FileslideStreamer < Sinatra::Base
 
     puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
     
+    ranged_request = !request.env['HTTP_RANGE'].nil?
+    range_start, range_stop = if ranged_request
+      halt 400, 'Invalid Range header' unless request.env['HTTP_RANGE'].start_with? 'bytes='
+      halt 416, 'Multipart ranges are not supported' if request.env['HTTP_RANGE'].include? ','
+      byte_range_requested = request.env['HTTP_RANGE'][6..-1] # drop 'bytes=' prefix
+      byte_range_requested.split('-').map(&:to_i)
+    else
+      [0, 0]
+    end
+
+    if ranged_request
+      if range_stop.nil?
+        # It is possible that this request was of shape "Range: bytes=123-", meaning
+        # that they want all bytes from 123 until EOF. In that case we set it to a negative number to
+        # indicate that it needs to be updated to the total zip size
+        if request.env['HTTP_RANGE'][-1] == '-'
+          range_stop = -1
+        else
+          halt 416, 'Range could not be parsed correctly'
+        end
+      elsif range_stop < range_start
+        # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
+        ranged_request = false
+      end
+    end
+
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) && 
       (!params[:uri_list].nil? && params[:uri_list].length>0)
 
@@ -47,9 +72,13 @@ class FileslideStreamer < Sinatra::Base
         puts "** availability_checking_http: #{uri} => #{resp.status}\n"
         unless [200,206].include? resp.status
           failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
+          next
         end
-        content_disposition = resp.headers.to_h["Content-Disposition"]
-        zip_streamer << ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition)
+        headers = resp.headers.to_h
+        content_disposition = headers['Content-Disposition']
+        total_size = headers['Content-Range'].split('/')[1].to_i
+        etag = headers['ETag']
+        zip_streamer << ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition, size: total_size, etag: etag)
       rescue HTTP::ConnectionError
         # Most likely the server we're trying to connect to is offline. In this case we display this URI with
         # a 503 error which means "Service Unavailable".
@@ -64,24 +93,52 @@ class FileslideStreamer < Sinatra::Base
 
     # Deduplicate filenames if required
     zip_streamer.deduplicate_filenames!
-
-    # Pull in the URI contents and stream as zip
-    http_body = zip_streamer.make_streaming_body
-
-    puts "** http_body: #{http_body.inspect}\n"
+    # Compute size of complete zip. This is required even for ranged requests.
+    total_size = zip_streamer.compute_total_size!
 
     headers = {
+      'Accept-Ranges' => 'bytes',
       'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
     }
-    [200,headers,http_body]
+
+    halt 416, 'Start of range outside zip size' if range_start >= total_size
+
+    # Create the body and any additional headers if required
+    http_body = nil
+    if ranged_request
+      if range_stop >= total_size || range_stop < 0
+        # straight from the HTTP RFC.
+        range_stop = total_size - 1
+      end
+      headers.merge!({
+        'Content-Range'  => "bytes #{range_start}-#{range_stop}/#{total_size}",
+        'Content-Length' => (1+range_stop-range_start).to_s
+      })
+      http_body = zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
+    else
+      headers.merge!({
+        'Content-Length' => total_size.to_s
+      })
+      http_body = zip_streamer.make_complete_streaming_body
+    end
+
+    puts "** http_body: #{http_body.inspect}\n"
+    response_code = ranged_request ? 206 : 200
+    [response_code,headers,http_body]
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   rescue UpstreamAPI::UpstreamNotFoundError => e
-    puts e.backtrace
     halt 500, 'Error connecting to upstream'
+  rescue ZipStreamer::ChecksummingError => e
+    puts e.backtrace
+    halt 500, 'Error occurred during checksum computation'
+  rescue Exception => e
+    p e
+    puts e.backtrace
+    raise e
   end
 
   def construct_error_message(failed_uris: )
@@ -89,7 +146,14 @@ class FileslideStreamer < Sinatra::Base
     failed_uris.each do |f|
       resp << f.to_s
     end
-    puts resp
     resp
+  end
+
+  def self.init!
+    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new }
+  end
+
+  def self.with_redis
+    @@redis_pool.with { |redis| yield(redis) }
   end
 end

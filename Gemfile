@@ -9,12 +9,16 @@ gem "puma", "~> 4.3.5"
 gem "dotenv"
 gem "zip_tricks"
 gem "http"
-
+gem "redis"
+gem "connection_pool"
+gem "retriable"
+gem "range_utils"
 
 group :development do
   gem "rspec"
   gem 'rack-test', require: 'rack/test'
   gem 'rubyzip'
+  gem 'timecop'
   gem 'capistrano', "~> 3.14", require: false
   gem 'capistrano-bundler'
   gem 'capistrano-rbenv'
