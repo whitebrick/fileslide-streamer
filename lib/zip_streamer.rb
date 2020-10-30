@@ -47,6 +47,10 @@ class ZipStreamer
     end
 
     def each
+      download_complete = false
+      start_time = Time.now.utc
+      bytes_total = 0
+      uris_written = []
       @segments.each do |segment|
         if @stop < 0
           break # stop processing this request, we're done
@@ -66,7 +70,9 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            uris_written << segment.uri
             resp.body.each do |chunk|
+              bytes_total += chunk.size
               yield(chunk)
             end
           end
@@ -82,7 +88,9 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"})
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            uris_written << segment.uri
             resp.body.each do |chunk|
+              bytes_total += chunk.size
               yield(chunk)
             end
           end
@@ -99,7 +107,9 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{@stop}"})
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            uris_written << segment.uri
             resp.body.each do |chunk|
+              bytes_total += chunk.size
               yield(chunk)
             end
           end
@@ -107,6 +117,19 @@ class ZipStreamer
           break
         end
       end
+      download_complete = true
+    rescue HTTP::Error
+      # no real way to recover at this point
+    ensure
+      # after we're done, but still within the rack body, regardless of if there was
+      # an exception, notify upstream about the results
+      stop_time = Time.now.utc
+      UpstreamAPI.new.report(
+        uris: uris_written,
+        start_time: start_time,
+        stop_time: stop_time,
+        bytes_sent: bytes_total,
+        complete: download_complete)
     end
   end
 
