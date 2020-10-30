@@ -13,6 +13,11 @@ class FileslideStreamer < Sinatra::Base
     "All good\n"
   end
 
+  get "/download" do
+    p request.env
+    'borp'
+  end
+
   post "/download" do
     # Parse the request
 
