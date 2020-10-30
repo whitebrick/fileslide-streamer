@@ -242,7 +242,6 @@ class ZipStreamer
     StreamingBody.new(segments: zip_segments, start: start, stop: stop)
   end
 
-  private
 
   def update_files_with_checksums!
     files_needing_checksums = []
