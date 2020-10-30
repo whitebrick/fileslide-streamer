@@ -15,6 +15,7 @@ class FileslideStreamer < Sinatra::Base
 
   get "/download" do
     p request.env
+    p params
     'borp'
   end
 
