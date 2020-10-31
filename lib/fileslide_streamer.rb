@@ -34,12 +34,12 @@ class FileslideStreamer < Sinatra::Base
     end
 
     # using the 303 status code forces the browser to change the method to GET.
-    redirect to("/stream/#{unique_key}/#{zip_filename}"), 303
+    redirect to("/stream/#{unique_key}"), 303
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   end
 
-  get "/stream/:uk/:filename" do
+  get "/stream/:uk" do
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(params[:uk])
     end
@@ -120,9 +120,9 @@ class FileslideStreamer < Sinatra::Base
     # Compute size of complete zip. This is required even for ranged requests.
     total_size = zip_streamer.compute_total_size!
 
-    headers = {
+    p headers = {
       'Accept-Ranges' => 'bytes',
-      'Content-Disposition' => "attachment",
+      'Content-Disposition' => "attachment, filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
