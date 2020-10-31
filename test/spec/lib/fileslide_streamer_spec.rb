@@ -67,6 +67,10 @@ RSpec.describe FileslideStreamer do
         and_return({authorized: false, unauthorized_html: "NOT ALLOWED"})
 
       post '/download', file_name: 'files.zip', uri_list: ["http://example.com/not_allowed_file"].to_json
+      
+      # Follow the redirect
+      expect(last_response.status).to eq 303
+      get (last_response.headers["Location"])
 
       expect(last_response.status).to eq 403
       expect(last_response.body).to eq "NOT ALLOWED"
@@ -83,6 +87,10 @@ RSpec.describe FileslideStreamer do
         "http://localhost:9999/allowed_but_unavailable_file2",
         "http://localhost:9293/random_bytes1.bin",
       ].to_json
+
+      # Follow the redirect
+      expect(last_response.status).to eq 303
+      get (last_response.headers["Location"])
 
       expect(last_response.status).to eq 502
       expect(last_response.body).to include '502 Bad Gateway'
@@ -101,6 +109,10 @@ RSpec.describe FileslideStreamer do
         "http://localhost:9293/random_bytes1.bin",
       ].to_json
 
+      # Follow the redirect
+      expect(last_response.status).to eq 303
+      get (last_response.headers["Location"])
+
       expect(last_response.status).to eq 502
       expect(last_response.body).to include '502 Bad Gateway'
       expect(last_response.body).to include 'The following files could not be fetched:'
@@ -116,6 +128,10 @@ RSpec.describe FileslideStreamer do
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
           post '/download', file_name: 'zero_files.zip', uri_list: [].to_json
+
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
 
           expect(last_response.status).to eq 200
           expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"zero_files.zip\""
@@ -146,6 +162,10 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes3.bin",
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
+
           expect(last_response.status).to eq 200
           expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
           expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
@@ -171,7 +191,7 @@ RSpec.describe FileslideStreamer do
             expect(zip.entries[2].get_input_stream.read).to eq f3
           end
 
-          expect(r.dbsize).to eq 3
+          expect(r.dbsize).to eq 4 # 3 checksums and a download UUID
           expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
             state: "done",
             etag: nil,
@@ -200,6 +220,10 @@ RSpec.describe FileslideStreamer do
           post '/download', file_name: 'one_file.zip', uri_list: [
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
+
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
         end
       end
 
@@ -208,9 +232,14 @@ RSpec.describe FileslideStreamer do
           header 'Range', 'gimme all the bytes'
           post '/download', file_name: 'files.zip', uri_list: [
             "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
+            "http://localhost:9293/random_bytes2.bin",
+            "http://localhost:9293/random_bytes3.bin"
           ].to_json
+
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
+
           expect(last_response.status).to eq 400
           expect(last_response.body).to eq 'Invalid Range header'
         end
@@ -219,9 +248,14 @@ RSpec.describe FileslideStreamer do
           header 'Range', 'bytes=0-50, 100-150'
           post '/download', file_name: 'files.zip', uri_list: [
             "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
+            "http://localhost:9293/random_bytes2.bin",
+            "http://localhost:9293/random_bytes3.bin"
           ].to_json
+
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
+
           expect(last_response.status).to eq 416
           expect(last_response.body).to eq 'Multipart ranges are not supported'
         end
@@ -235,6 +269,10 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
+
           expect(last_response.status).to eq 416
         end
 
@@ -247,6 +285,10 @@ RSpec.describe FileslideStreamer do
           post '/download', file_name: 'files.zip', uri_list: [
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
+
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          get (last_response.headers["Location"])
 
           expect(last_response.status).to eq 200
         end
@@ -263,6 +305,11 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          stream_uri = last_response.headers["Location"]
+          get stream_uri
+
           expect(last_response.status).to eq 200
           full_response_body = last_response.body.dup
 
@@ -271,10 +318,7 @@ RSpec.describe FileslideStreamer do
           allow_any_instance_of(UpstreamAPI).to receive(:report)
 
           header 'Range', 'bytes=0-'
-          post '/download', file_name: 'files.zip', uri_list: [
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
-          ].to_json
+          get stream_uri
 
           expect(last_response.status).to eq 206
           expect(last_response.body.length).to eq full_response_body.length
@@ -293,6 +337,11 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          stream_uri = last_response.headers["Location"]
+          get stream_uri
+
           expect(last_response.status).to eq 200
           full_response_body = last_response.body.dup
 
@@ -301,10 +350,7 @@ RSpec.describe FileslideStreamer do
           allow_any_instance_of(UpstreamAPI).to receive(:report)
 
           header 'Range', 'bytes=0-1234'
-          post '/download', file_name: 'files.zip', uri_list: [
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
-          ].to_json
+          get stream_uri
 
           expect(last_response.status).to eq 206
           first_partial_body = last_response.body.dup
@@ -315,10 +361,7 @@ RSpec.describe FileslideStreamer do
 
 
           header 'Range', 'bytes=1235-'
-          post '/download', file_name: 'files.zip', uri_list: [
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
-          ].to_json
+          get stream_uri
 
           expect(last_response.status).to eq 206
           second_partial_body = last_response.body.dup
@@ -341,6 +384,11 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          stream_uri = last_response.headers["Location"]
+          get stream_uri
+
           expect(last_response.status).to eq 200
           full_response_body = last_response.body.dup
 
@@ -350,10 +398,7 @@ RSpec.describe FileslideStreamer do
           expect(Thread).not_to receive(:new) # all checksums already known
 
           header 'Range', 'bytes=0-123456'
-          post '/download', file_name: 'files.zip', uri_list: [
-            "http://localhost:9293/random_bytes1.bin",
-            "http://localhost:9293/random_bytes2.bin"
-          ].to_json
+          get stream_uri
 
           expect(last_response.status).to eq 206
           expect(last_response.body.length).to eq full_response_body.length
@@ -375,6 +420,11 @@ RSpec.describe FileslideStreamer do
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
 
+          # Follow the redirect
+          expect(last_response.status).to eq 303
+          header 'Range', 'bytes=0-'
+          get (last_response.headers["Location"])
+
           expect(last_response.status).to eq 206
           # The received body should be a valid zip file with three items in it and the items
           # should match the files in spec/fixtures
@@ -393,7 +443,7 @@ RSpec.describe FileslideStreamer do
             expect(zip.entries[1].get_input_stream.read).to eq f2
           end
 
-          expect(r.dbsize).to eq 2
+          expect(r.dbsize).to eq 3 # 2 checksums and the download UUID
         end
       end
 

@@ -122,7 +122,7 @@ class FileslideStreamer < Sinatra::Base
 
     headers = {
       'Accept-Ranges' => 'bytes',
-      'Content-Disposition' => "attachment, filename=\"#{zip_filename}\"",
+      'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
