@@ -191,7 +191,7 @@ RSpec.describe FileslideStreamer do
             expect(zip.entries[2].get_input_stream.read).to eq f3
           end
 
-          expect(r.dbsize).to eq 4 # 3 checksums and a download UUID
+          expect(r.dbsize).to eq 3
           expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
             state: "done",
             etag: nil,
@@ -294,6 +294,8 @@ RSpec.describe FileslideStreamer do
         end
 
         it 'returns the whole file for range "0-"' do
+          r = Redis.new
+          r.flushall
           now = Time.now
           Timecop.freeze(now) # otherwise the modification times of files in the zip will differ
           expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
@@ -308,6 +310,10 @@ RSpec.describe FileslideStreamer do
           # Follow the redirect
           expect(last_response.status).to eq 303
           stream_uri = last_response.headers["Location"]
+          # Save the UUID and download parameter. The succesful download would delete it but we need it
+          # for the ranged request later.
+          saved_uuid = stream_uri.split('/').last
+          saved_params = r.get(saved_uuid)
           get stream_uri
 
           expect(last_response.status).to eq 200
@@ -316,6 +322,9 @@ RSpec.describe FileslideStreamer do
           allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
           allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+          # Re-set the download params:
+          r.set(saved_uuid, saved_params)
 
           header 'Range', 'bytes=0-'
           get stream_uri
@@ -327,6 +336,8 @@ RSpec.describe FileslideStreamer do
         end
 
         it 'returns ranges that can sum to the whole response' do
+          r = Redis.new
+          r.flushall
           Timecop.freeze(Time.now) # otherwise the modification times of files in the zip will differ
           expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
@@ -340,6 +351,10 @@ RSpec.describe FileslideStreamer do
           # Follow the redirect
           expect(last_response.status).to eq 303
           stream_uri = last_response.headers["Location"]
+          # Save the UUID and download parameter. The succesful download would delete it but we need it
+          # for the ranged request later.
+          saved_uuid = stream_uri.split('/').last
+          saved_params = r.get(saved_uuid)
           get stream_uri
 
           expect(last_response.status).to eq 200
@@ -348,6 +363,9 @@ RSpec.describe FileslideStreamer do
           allow_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
             and_return({authorized: true, unauthorized_html: nil})
           allow_any_instance_of(UpstreamAPI).to receive(:report)
+
+          # Re-set the download params:
+          r.set(saved_uuid, saved_params)
 
           header 'Range', 'bytes=0-1234'
           get stream_uri
@@ -387,6 +405,10 @@ RSpec.describe FileslideStreamer do
           # Follow the redirect
           expect(last_response.status).to eq 303
           stream_uri = last_response.headers["Location"]
+          # Save the UUID and download parameter. The succesful download would delete it but we need it
+          # for the ranged request later.
+          saved_uuid = stream_uri.split('/').last
+          saved_params = r.get(saved_uuid)
           get stream_uri
 
           expect(last_response.status).to eq 200
@@ -396,6 +418,9 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           allow_any_instance_of(UpstreamAPI).to receive(:report)
           expect(Thread).not_to receive(:new) # all checksums already known
+
+          # Re-set the download params:
+          r.set(saved_uuid, saved_params)
 
           header 'Range', 'bytes=0-123456'
           get stream_uri

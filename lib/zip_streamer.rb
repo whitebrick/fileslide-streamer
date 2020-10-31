@@ -164,7 +164,7 @@ class ZipStreamer
     end
   end
 
-  def make_complete_streaming_body
+  def make_complete_streaming_body(uuid: )
     ZipTricks::RackBody.new do |zip|
       download_complete = false
       start_time = Time.now.utc
@@ -193,6 +193,13 @@ class ZipStreamer
       # If an exception happens during streaming, download_complete will never
       # become true and will be reported as `false`.
       download_complete = true
+      # Delete the UUID key from Redis as this download is now done. It would have expired eventually of course,
+      # but no reason to take up extra space. Note that this doesn't happen for partial requests since in those
+      # cases we can't be sure the client actually has all the bytes yet and they might do more requests to the
+      # same URL.
+      FileslideStreamer.with_redis do |redis|
+        redis.del(uuid)
+      end
     rescue HTTP::Error
       # no real way to recover at this point
     ensure

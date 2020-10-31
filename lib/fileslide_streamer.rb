@@ -40,8 +40,10 @@ class FileslideStreamer < Sinatra::Base
   end
 
   get "/stream/:uk" do
+    unique_key = params[:uk]
+    halt 400 unless unique_key
     stored_params = FileslideStreamer.with_redis do |redis|
-      redis.get(params[:uk])
+      redis.get(unique_key)
     end
 
     halt 404, "This download is unavailable or has expired" if stored_params.nil?
@@ -146,7 +148,7 @@ class FileslideStreamer < Sinatra::Base
       headers.merge!({
         'Content-Length' => total_size.to_s
       })
-      http_body = zip_streamer.make_complete_streaming_body
+      http_body = zip_streamer.make_complete_streaming_body(uuid: unique_key)
     end
 
     puts "** http_body: #{http_body.inspect}\n"
@@ -156,12 +158,7 @@ class FileslideStreamer < Sinatra::Base
   rescue UpstreamAPI::UpstreamNotFoundError => e
     halt 500, 'Error connecting to upstream'
   rescue ZipStreamer::ChecksummingError => e
-    puts e.backtrace
     halt 500, 'Error occurred during checksum computation'
-  rescue Exception => e
-    p e
-    puts e.backtrace
-    raise e
   end
 
   def construct_error_message(failed_uris: )
