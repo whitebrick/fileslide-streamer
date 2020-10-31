@@ -1,4 +1,8 @@
+require 'securerandom'
+
 class FileslideStreamer < Sinatra::Base
+  DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
+
   FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
     def to_s
       "#{uri.to_s} [#{response_code}]\n"
@@ -13,11 +17,37 @@ class FileslideStreamer < Sinatra::Base
     "All good\n"
   end
 
-  get "/download" do
-  # post "/download" do
-    # Parse the request
-
+  post "/download" do
     puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
+    # Parse the request and do some initial filtering for badly formatted requests:
+    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) &&
+      (!params[:uri_list].nil? && params[:uri_list].length>0)
+
+    zip_filename = params[:file_name]
+    uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
+
+    halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
+
+    unique_key = SecureRandom.uuid
+    FileslideStreamer.with_redis do |redis|
+      redis.set(unique_key, {filename: zip_filename, uri_list: uri_list}.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
+    end
+
+    redirect to("/stream/#{unique_key}"), 303
+  rescue JSON::ParserError, KeyError => e
+    halt 400, 'uri_list is not a valid JSON array'
+  end
+
+  get "/stream/:unique_key" do
+    stored_params = FileslideStreamer.with_redis do |redis|
+      redis.get(params[:unique_key])
+    end
+
+    halt 404, "This download is unavailable or has expired" if stored_params.nil?
+
+    decoded_params = JSON.parse(stored_params, symbolize_names: true)
+    zip_filename = decoded_params[:file_name]
+    uri_list = decoded_params[:uri_list]
     
     ranged_request = !request.env['HTTP_RANGE'].nil?
     range_start, range_stop = if ranged_request
@@ -44,14 +74,6 @@ class FileslideStreamer < Sinatra::Base
         ranged_request = false
       end
     end
-
-    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) && 
-      (!params[:uri_list].nil? && params[:uri_list].length>0)
-
-    zip_filename = params[:file_name]
-    uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
-
-    halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
 
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
@@ -129,8 +151,7 @@ class FileslideStreamer < Sinatra::Base
     puts "** http_body: #{http_body.inspect}\n"
     response_code = ranged_request ? 206 : 200
     [response_code,headers,http_body]
-  rescue JSON::ParserError, KeyError => e
-    halt 400, 'uri_list is not a valid JSON array'
+
   rescue UpstreamAPI::UpstreamNotFoundError => e
     halt 500, 'Error connecting to upstream'
   rescue ZipStreamer::ChecksummingError => e
