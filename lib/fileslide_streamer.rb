@@ -34,12 +34,12 @@ class FileslideStreamer < Sinatra::Base
     end
 
     # using the 303 status code forces the browser to change the method to GET.
-    redirect to("/stream/#{zip_filename}&uk=#{unique_key}"), 303
+    redirect to("/stream/#{unique_key}/#{zip_filename}"), 303
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   end
 
-  get "/stream/:zip_filename" do
+  get "/stream/:uk/:filename" do
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(params[:uk])
     end
