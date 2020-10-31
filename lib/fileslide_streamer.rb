@@ -33,14 +33,15 @@ class FileslideStreamer < Sinatra::Base
       redis.set(unique_key, {filename: zip_filename, uri_list: uri_list}.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
-    redirect to("/stream/#{unique_key}"), 303
+    # using the 303 status code forces the browser to change the method to GET.
+    redirect to("/stream/#{zip_filename}&uk=#{unique_key}"), 303
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   end
 
-  get "/stream/:unique_key" do
+  get "/stream/:zip_filename" do
     stored_params = FileslideStreamer.with_redis do |redis|
-      redis.get(params[:unique_key])
+      redis.get(params[:uk])
     end
 
     halt 404, "This download is unavailable or has expired" if stored_params.nil?
@@ -121,7 +122,7 @@ class FileslideStreamer < Sinatra::Base
 
     headers = {
       'Accept-Ranges' => 'bytes',
-      'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
+      'Content-Disposition' => "attachment",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
