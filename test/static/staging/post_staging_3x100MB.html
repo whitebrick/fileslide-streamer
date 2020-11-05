@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Streamer Test - Staging</title>
+</head> 
+<body>
+  <form action="https://stream.fileslide-staging.io/download" accept-charset="UTF-8" method="post">
+    <input type="hidden" name="file_name" id="file_name" value="test_3x100MB.zip" />
+    <input type="hidden" name="uri_list" id="uri_list" value="[
+        &quot;https://s3.us-west-1.wasabisys.com/fs-test01/video/Jellyfish%20Video%20Bitrate%20Test%20Files/jellyfish-20-mbps-hd-hevc.mkv&quot;,
+        &quot;https://s3.us-west-1.wasabisys.com/fs-test01/video/Jellyfish%20Video%20Bitrate%20Test%20Files/jellyfish-25-mbps-hd-hevc.mkv&quot;,
+        &quot;https://s3.us-west-1.wasabisys.com/fs-test01/video/Jellyfish%20Video%20Bitrate%20Test%20Files/jellyfish-30-mbps-hd-h264.mkv&quot;
+      ]" />
+    <input type="submit" value="Download"/>
+  </form>
+</body>

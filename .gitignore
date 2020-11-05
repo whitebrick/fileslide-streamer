@@ -65,3 +65,9 @@ yarn-debug.log*
 # Ignore uploaded files in development
 /storage/*
 !/storage/.keep
+
+# local osx dev
+_start_streamer.sh
+_start_redis.sh
+_stop_redis.sh
+test/bucket_data
