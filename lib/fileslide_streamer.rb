@@ -100,10 +100,9 @@ class FileslideStreamer < Sinatra::Base
           failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
           next
         end
-        headers = resp.headers.to_h
-        content_disposition = headers['Content-Disposition']
-        total_size = headers['Content-Range'].split('/')[1].to_i
-        etag = headers['ETag']
+        content_disposition = resp.headers['Content-Disposition']
+        total_size = resp.headers['Content-Range'].split('/')[1].to_i
+        etag = resp.headers['ETag']
         zip_streamer << ZipStreamer::SingleFile.new(original_uri: uri, content_disposition: content_disposition, size: total_size, etag: etag)
       rescue HTTP::ConnectionError
         # Most likely the server we're trying to connect to is offline. In this case we display this URI with
