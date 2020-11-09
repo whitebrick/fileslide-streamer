@@ -40,7 +40,8 @@ class ZipStreamer
   end
 
   class StreamingBody
-    def initialize(segments: , start:, stop:)
+    def initialize(request_id:, segments: , start:, stop:)
+      @request_id = request_id
       @segments = segments
       @start = start
       @stop = stop
@@ -50,7 +51,7 @@ class ZipStreamer
       download_complete = false
       start_time = Time.now.utc
       bytes_total = 0
-      uris_written = []
+      written_uri_list = []
       @segments.each do |segment|
         if @stop < 0
           break # stop processing this request, we're done
@@ -70,7 +71,7 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
-            uris_written << segment.uri
+            written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
               yield(chunk)
@@ -88,7 +89,7 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"})
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
-            uris_written << segment.uri
+            written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
               yield(chunk)
@@ -107,7 +108,7 @@ class ZipStreamer
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{@stop}"})
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
-            uris_written << segment.uri
+            written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
               yield(chunk)
@@ -125,7 +126,8 @@ class ZipStreamer
       # an exception, notify upstream about the results
       stop_time = Time.now.utc
       UpstreamAPI.new.report(
-        uris: uris_written,
+        request_id: @request_id,
+        written_uri_list: written_uri_list,
         start_time: start_time,
         stop_time: stop_time,
         bytes_sent: bytes_total,
@@ -164,12 +166,12 @@ class ZipStreamer
     end
   end
 
-  def make_complete_streaming_body(uuid: )
+  def make_complete_streaming_body(request_id:)
     ZipTricks::RackBody.new do |zip|
       download_complete = false
       start_time = Time.now.utc
       bytes_total = 0
-      uris_written = []
+      written_uri_list = []
       current_etag = nil
       http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
       @files.each do |singlefile|
@@ -178,14 +180,14 @@ class ZipStreamer
           resp = http.get(singlefile.uri)
           raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
           current_etag = resp.headers["ETag"]
-          puts "zip.write_stored_file: ** #{singlefile.uri} => #{resp.status}\n"
+          puts "** zip.write_stored_file: #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
             bytes_total += chunk.size
             checksummer << chunk
             sink.write(chunk)
           end
         end
-        uris_written << singlefile.uri
+        written_uri_list << singlefile.uri
         FileslideStreamer.with_redis do |redis|
           redis.set(singlefile.uri, {state: "done", etag: current_etag, crc32: checksummer.to_i}.to_json)
         end
@@ -193,13 +195,6 @@ class ZipStreamer
       # If an exception happens during streaming, download_complete will never
       # become true and will be reported as `false`.
       download_complete = true
-      # Delete the UUID key from Redis as this download is now done. It would have expired eventually of course,
-      # but no reason to take up extra space. Note that this doesn't happen for partial requests since in those
-      # cases we can't be sure the client actually has all the bytes yet and they might do more requests to the
-      # same URL.
-      FileslideStreamer.with_redis do |redis|
-        redis.del(uuid)
-      end
     rescue HTTP::Error
       # no real way to recover at this point
     ensure
@@ -207,15 +202,25 @@ class ZipStreamer
       # an exception, notify upstream about the results
       stop_time = Time.now.utc
       UpstreamAPI.new.report(
-        uris: uris_written,
+        request_id: request_id,
+        written_uri_list: written_uri_list,
         start_time: start_time,
         stop_time: stop_time,
         bytes_sent: bytes_total,
         complete: download_complete)
+      if download_complete
+        # Delete the UUID key from Redis as this download is now done. It would have expired eventually of course,
+        # but no reason to take up extra space. Note that this doesn't happen for partial requests since in those
+        # cases we can't be sure the client actually has all the bytes yet and they might do more requests to the
+        # same URL.
+        FileslideStreamer.with_redis do |redis|
+          redis.del(request_id)
+        end
+      end
     end
   end
 
-  def make_partial_streaming_body(start:, stop:)
+  def make_partial_streaming_body(request_id:, start:, stop:)
     # To efficiently make a range request into a zip archive we reconstruct it first,
     # simulating the files with placeholder objects. To do this, we need to have the checksums
     # available so we fetch those first.
@@ -246,7 +251,7 @@ class ZipStreamer
     zipstreamer.close
     zip_segments << string_capturer.string.dup
     # Combining the segments into a something that can be streamed and can have a range applied:
-    StreamingBody.new(segments: zip_segments, start: start, stop: stop)
+    StreamingBody.new(request_id: request_id, segments: zip_segments, start: start, stop: stop)
   end
 
 

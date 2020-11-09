@@ -21,14 +21,22 @@ class UpstreamAPI
     raise UpstreamNotFoundError
   end
 
-  def report(uris:, start_time:, stop_time:, bytes_sent:, complete: )
-    @http.post("#{UPSTREAM_API_LOCATION}/report", form: {
-      uris: uris.to_json,
+  def report(request_id:, written_uri_list:, start_time:, stop_time:, bytes_sent:, complete: )
+    stored_params = FileslideStreamer.with_redis do |redis|
+      redis.get(request_id)
+    end
+    uri_list = JSON.parse(stored_params, symbolize_names: true)[:uri_list]
+    report_hash = {
+      request_id: request_id,
+      uri_list: uri_list.to_json,
+      written_uri_list: written_uri_list.to_json,
       start_time: start_time,
       stop_time: stop_time,
       bytes_sent: bytes_sent,
       complete: complete,
-    })
+    }
+    puts "** reporting: #{report_hash}\n\n"
+    @http.post("#{UPSTREAM_API_LOCATION}/report", form: report_hash)
   rescue HTTP::Error
     # it's already after the response to the user has completed, not much
     # that we can do

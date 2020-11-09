@@ -18,7 +18,7 @@ class FileslideStreamer < Sinatra::Base
   end
 
   post "/download" do
-    puts "** params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
+    puts "** POST params[:request_id]=#{params[:request_id]} params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
     # Parse the request and do some initial filtering for badly formatted requests:
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) &&
       (!params[:uri_list].nil? && params[:uri_list].length>0)
@@ -28,22 +28,30 @@ class FileslideStreamer < Sinatra::Base
 
     halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
 
-    unique_key = SecureRandom.uuid
+    # request_id is optional - passed through to report for end-to-end testing
+    if !params[:request_id].nil?
+      halt 400, 'Malformed UUID string' unless /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(params[:request_id].to_s.downcase)
+      request_id = params[:request_id]
+    else
+      request_id = SecureRandom.uuid
+    end
+
     FileslideStreamer.with_redis do |redis|
-      redis.set(unique_key, {file_name: zip_filename, uri_list: uri_list}.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
+      redis.set(request_id, {file_name: zip_filename, uri_list: uri_list}.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
     # using the 303 status code forces the browser to change the method to GET.
-    redirect to("/stream/#{unique_key}"), 303
+    redirect to("/stream/#{request_id}"), 303
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   end
 
-  get "/stream/:uk" do
-    unique_key = params[:uk]
-    halt 400 unless unique_key
+  get "/stream/:request_id" do
+    puts "** GET #{params[:request_id]}"
+    request_id = params[:request_id]
+    halt 400 unless request_id
     stored_params = FileslideStreamer.with_redis do |redis|
-      redis.get(unique_key)
+      redis.get(request_id)
     end
 
     halt 404, "This download is unavailable or has expired" if stored_params.nil?
@@ -142,15 +150,14 @@ class FileslideStreamer < Sinatra::Base
         'Content-Range'  => "bytes #{range_start}-#{range_stop}/#{total_size}",
         'Content-Length' => (1+range_stop-range_start).to_s
       })
-      http_body = zip_streamer.make_partial_streaming_body(start: range_start, stop: range_stop)
+      http_body = zip_streamer.make_partial_streaming_body(request_id: request_id, start: range_start, stop: range_stop)
     else
       headers.merge!({
         'Content-Length' => total_size.to_s
       })
-      http_body = zip_streamer.make_complete_streaming_body(uuid: unique_key)
+      http_body = zip_streamer.make_complete_streaming_body(request_id: request_id)
     end
 
-    puts "** http_body: #{http_body.inspect}\n"
     response_code = ranged_request ? 206 : 200
     [response_code,headers,http_body]
 
