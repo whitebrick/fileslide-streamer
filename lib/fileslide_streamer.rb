@@ -30,8 +30,8 @@ class FileslideStreamer < Sinatra::Base
 
     # request_id is optional - passed through to report for end-to-end testing
     if !params[:request_id].nil?
-      halt 400, 'Malformed UUID string' unless /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(params[:request_id].to_s.downcase)
-      request_id = params[:request_id]
+      request_id = params[:request_id].to_s.downcase
+      halt 400, 'Malformed UUID for request_id parameter' unless /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
     else
       request_id = SecureRandom.uuid
     end
