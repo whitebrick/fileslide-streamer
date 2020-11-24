@@ -15,7 +15,7 @@ exec $SHELL
 git clone git://github.com/sstephenson/ruby-build.git ~/.rbenv/plugins/ruby-build
 echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bash_profile
 exec $SHELL
-rbenv install 2.6.6
+rbenv-install 2.6.6
 rbenv global 2.6.6
 gem install bundler
 git clone git@github.com:whitebrick/fileslide-streamer.git
@@ -39,6 +39,39 @@ sudo nano custom_server.conf
 #         location / {
 #                     proxy_pass http://127.0.0.1:9292;
 #   }
+# }
+Or for HTTPS:
+# server {
+#	server_name stream.fileslide-staging.io;
+#       access_log /var/log/nginx/reverse-access.log;
+#        error_log /var/log/nginx/reverse-error.log;
+#        proxy_buffering off;
+#	proxy_set_header Connection "";
+#        proxy_http_version 1.1;
+#        location / {
+#	  if ($request_method = 'POST') {
+#            add_header 'Access-Control-Allow-Origin' '*';
+#            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+#            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+#            add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+#     	   }
+#           proxy_pass http://127.0.0.1:9292;
+#        }
+#    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+#    listen 443 ssl; # managed by Certbot
+#    ssl_certificate /etc/letsencrypt/live/stream.fileslide-staging.io/fullchain.pem; # managed by Certbot
+#    ssl_certificate_key /etc/letsencrypt/live/stream.fileslide-staging.io/privkey.pem; # managed by Certbot
+#    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+#    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+# }
+# server {
+#    if ($host = stream.fileslide-staging.io) {
+#        return 301 https://$host$request_uri;
+#    } # managed by Certbot
+#	server_name stream.fileslide-staging.io;
+#        listen 80;
+#        listen [::]:80;
+#    return 404; # managed by Certbot
 # }
 
 sudo systemctl restart nginx
