@@ -15,7 +15,7 @@ exec $SHELL
 git clone git://github.com/sstephenson/ruby-build.git ~/.rbenv/plugins/ruby-build
 echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bash_profile
 exec $SHELL
-rbenv-install 2.6.6
+rbenv install 2.6.6
 rbenv global 2.6.6
 gem install bundler
 git clone git@github.com:whitebrick/fileslide-streamer.git
