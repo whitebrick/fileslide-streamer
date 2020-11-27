@@ -41,7 +41,7 @@ class FileslideStreamer < Sinatra::Base
     end
 
     # using the 303 status code forces the browser to change the method to GET.
-    redirect to("/stream/#{request_id}"), 303
+    redirect to("#{ENV.fetch("BASE_URL")}/stream/#{request_id}"), 303
   rescue JSON::ParserError, KeyError => e
     halt 400, 'uri_list is not a valid JSON array'
   end
