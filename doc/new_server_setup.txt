@@ -10,11 +10,11 @@ sudo yum install -y git-core zlib zlib-devel gcc-c++ patch readline readline-dev
 git clone git://github.com/sstephenson/rbenv.git .rbenv
 echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bash_profile
 echo 'eval "$(rbenv init -)"' >> ~/.bash_profile
-exec $SHELL
+. .bash_profile
 
 git clone git://github.com/sstephenson/ruby-build.git ~/.rbenv/plugins/ruby-build
 echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bash_profile
-exec $SHELL
+. .bash_profile
 rbenv install 2.6.6
 rbenv global 2.6.6
 gem install bundler
@@ -75,20 +75,7 @@ Or for HTTPS:
 # }
 
 sudo systemctl restart nginx
-# Now verify you can reach it with curl or something on port 80.
-
-# Setup a keypair for github
-# see https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/connecting-to-github-with-ssh
-# Add the public key to the repo as a "deploy key" in the settings part of the repo
-# in the end, verify you can ssh to github from the repo.
-
-# Setup ssh so that you can login to the box as the required user (default is `ec2-user`) without needing to supply 
-# any password. Capistrano will need this anyway. To get it setup, add config for the box to ~/.ssh/config.
-
-# test it out with `bundle exec cap staging deploy`
-# You may have to comment out the `bind` directive in shared/puma.rb after the first deploy (which generates that file)
-# but afterwards it should be fine
-```
+# Now verify you can reach it with curl on port 80.
 
 # letsencrypt
 # just follow:
@@ -96,3 +83,18 @@ sudo systemctl restart nginx
 # - https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/SSL-on-amazon-linux-2.html#letsencrypt
 #   and then for the rest:
 # - https://www.nginx.com/blog/using-free-ssltls-certificates-from-lets-encrypt-with-nginx/
+
+# Setup a keypair for github
+# see https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/connecting-to-github-with-ssh
+# Add the public key to the repo as a "deploy key" in the settings part of the repo
+# in the end, verify you can ssh to github from the repo. You are now done on the server itself.
+
+# On your own box, setup ssh so that you can login to the box as the required user (default is `ec2-user`)
+# without needing to supply any password. Capistrano will need this later. To get it setup, add config
+# for the box to ~/.ssh/config.
+
+# Add the ip of the new server to config/deploy/staging.rb
+# Set up the puma.rb file for all servers (including the new one with) `bundle exec cap puma:config`
+# Test out deploying with `bundle exec cap staging deploy`
+```
+
