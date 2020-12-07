@@ -2,7 +2,7 @@ require 'thwait'
 require 'zlib'
 
 class ZipStreamer
-  CHECKSUMMING_TIMEOUT = 30 # seconds
+  CHECKSUMMING_TIMEOUT = 600 # seconds
   CHECKSUMMING_CHUNK_SIZE = 512 * 1024 * 1024 # chunk of 512 MB, about 5 sec/chunk?
 
   NotYetAvailable = Class.new(StandardError)
