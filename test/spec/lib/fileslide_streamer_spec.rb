@@ -34,10 +34,9 @@ RSpec.describe FileslideStreamer do
   end
 
   context '/download' do
-    it 'fails with 400 if the request file_name is blank' do
+    it 'succeed with 303 if the request file_name is blank' do
       post '/download', uri_list: ["http://localhost:9293/random_bytes1.bin"].to_json
-      expect(last_response.status).to eq 400
-      expect(last_response.body).to eq 'Request must include non-empty file_name and uri_list parameters'
+      expect(last_response.status).to eq 303
     end
 
     it 'fails with 400 if the request uri_list is blank' do
@@ -224,6 +223,190 @@ RSpec.describe FileslideStreamer do
           # Follow the redirect
           expect(last_response.status).to eq 303
           get (last_response.headers["Location"])
+        end
+
+        context 'when uri_list list is in array format' do
+          it 'should stream uris as zip' do
+            r = Redis.new
+            r.flushall
+
+            expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+              and_return({authorized: true, unauthorized_html: nil})
+            expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+            post '/download', file_name: 'three_files.zip', uri_list: [
+              "http://localhost:9293/random_bytes1.bin",
+              "http://localhost:9293/random_bytes2.bin",
+              "http://localhost:9293/random_bytes3.bin",
+            ]
+
+            # Follow the redirect
+            expect(last_response.status).to eq 303
+            get (last_response.headers["Location"])
+
+            expect(last_response.status).to eq 200
+            expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
+            expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
+
+            tf = Tempfile.new
+            tf << last_response.body
+            tf.flush
+            f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+            f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+            f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
+            Zip::File.open(tf) do | zip |
+              expect(zip.entries.length).to eq(3)
+              expect(zip.entries[0].name).to eq "random_bytes1.bin"
+              expect(zip.entries[0].size).to eq 1024
+              expect(zip.entries[0].get_input_stream.read).to eq f1
+              expect(zip.entries[1].name).to eq "random_bytes2.bin"
+              expect(zip.entries[1].size).to eq 2048
+              expect(zip.entries[1].get_input_stream.read).to eq f2
+              expect(zip.entries[2].name).to eq "random_bytes3.bin"
+              expect(zip.entries[2].size).to eq 4096
+              expect(zip.entries[2].get_input_stream.read).to eq f3
+            end
+
+            expect(r.dbsize).to eq 3
+            expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f1)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f2)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f3)
+            }.to_json)
+          end
+
+          it 'should stream uris as zip if request format is json' do
+            r = Redis.new
+            r.flushall
+
+            expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+              and_return({authorized: true, unauthorized_html: nil})
+            expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+            post '/download', {
+              file_name: 'three_files.zip', 
+              uri_list: [
+                "http://localhost:9293/random_bytes1.bin",
+                "http://localhost:9293/random_bytes2.bin",
+                "http://localhost:9293/random_bytes3.bin",
+              ]
+            }, { "ACCEPT" => "application/json" }
+
+            # Follow the redirect
+            expect(last_response.status).to eq 303
+            get (last_response.headers["Location"])
+
+            expect(last_response.status).to eq 200
+            expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"three_files.zip\""
+            expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
+            tf = Tempfile.new
+            tf << last_response.body
+            tf.flush
+            f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+            f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+            f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
+            Zip::File.open(tf) do | zip |
+              expect(zip.entries.length).to eq(3)
+              expect(zip.entries[0].name).to eq "random_bytes1.bin"
+              expect(zip.entries[0].size).to eq 1024
+              expect(zip.entries[0].get_input_stream.read).to eq f1
+              expect(zip.entries[1].name).to eq "random_bytes2.bin"
+              expect(zip.entries[1].size).to eq 2048
+              expect(zip.entries[1].get_input_stream.read).to eq f2
+              expect(zip.entries[2].name).to eq "random_bytes3.bin"
+              expect(zip.entries[2].size).to eq 4096
+              expect(zip.entries[2].get_input_stream.read).to eq f3
+            end
+
+            expect(r.dbsize).to eq 3
+            expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f1)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f2)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f3)
+            }.to_json)
+          end          
+        end
+
+        context 'when filename is blank' do
+          it 'downloaded filename should be download.zip' do
+            r = Redis.new
+            r.flushall
+
+            expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
+              and_return({authorized: true, unauthorized_html: nil})
+            expect_any_instance_of(UpstreamAPI).to receive(:report)
+
+            post '/download', {
+              uri_list: [
+                "http://localhost:9293/random_bytes1.bin",
+                "http://localhost:9293/random_bytes2.bin",
+                "http://localhost:9293/random_bytes3.bin",
+              ]
+            }, { "ACCEPT" => "application/json" }
+
+            # Follow the redirect
+            expect(last_response.status).to eq 303
+            get (last_response.headers["Location"])
+
+            expect(last_response.status).to eq 200
+            expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"download.zip\""
+            expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
+            tf = Tempfile.new
+            tf << last_response.body
+            tf.flush
+            f1 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes1.bin'),'rb') {|file| file.read}
+            f2 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes2.bin'),'rb') {|file| file.read}
+            f3 = File.open(File.expand_path(__dir__ + '/../fixtures/random_bytes3.bin'),'rb') {|file| file.read}
+            Zip::File.open(tf) do | zip |
+              expect(zip.entries.length).to eq(3)
+              expect(zip.entries[0].name).to eq "random_bytes1.bin"
+              expect(zip.entries[0].size).to eq 1024
+              expect(zip.entries[0].get_input_stream.read).to eq f1
+              expect(zip.entries[1].name).to eq "random_bytes2.bin"
+              expect(zip.entries[1].size).to eq 2048
+              expect(zip.entries[1].get_input_stream.read).to eq f2
+              expect(zip.entries[2].name).to eq "random_bytes3.bin"
+              expect(zip.entries[2].size).to eq 4096
+              expect(zip.entries[2].get_input_stream.read).to eq f3
+            end
+
+            expect(r.dbsize).to eq 3
+            expect(r.get("http://localhost:9293/random_bytes1.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f1)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes2.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f2)
+            }.to_json)
+            expect(r.get("http://localhost:9293/random_bytes3.bin")).to eq({
+              state: "done",
+              etag: nil,
+              crc32: Zlib.crc32(f3)
+            }.to_json)
+          end
         end
       end
 
