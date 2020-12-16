@@ -2,6 +2,7 @@ require 'securerandom'
 
 class FileslideStreamer < Sinatra::Base
   DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
+  DEFAULT_FILE_NAME = 'download.zip'
 
   FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
     def to_s
@@ -19,12 +20,29 @@ class FileslideStreamer < Sinatra::Base
 
   post "/download" do
     puts "** POST params[:request_id]=#{params[:request_id]} params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
+    #handle JSON request
+    is_json_request = request.content_type == 'application/json'
+    if is_json_request 
+      #to send resonse header as json then set content type to json
+      content_type :json
+      #cannot read 'request.body.read' more then once so assigned to variable 
+      json_body = request.body.read
+      unless json_body.empty?
+        json_body = JSON.parse(json_body).merge!(params || {})
+        params = json_body.transform_keys(&:to_sym)
+      end
+    end
+    params[:file_name] = DEFAULT_FILE_NAME if params[:file_name].nil?
     # Parse the request and do some initial filtering for badly formatted requests:
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) &&
       (!params[:uri_list].nil? && params[:uri_list].length>0)
 
     zip_filename = params[:file_name]
-    uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
+    if params[:uri_list].is_a?(Array)
+      uri_list = params[:uri_list]
+    else
+      uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
+    end
 
     halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
 
