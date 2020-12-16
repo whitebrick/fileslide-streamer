@@ -29,7 +29,7 @@ class FileslideStreamer < Sinatra::Base
       json_body = request.body.read
       unless json_body.empty?
         json_body = JSON.parse(json_body).merge!(params || {})
-        params = json_body.transform_keys(&:to_sym)
+        @params = json_body.transform_keys(&:to_sym)
       end
     end
     params[:file_name] = DEFAULT_FILE_NAME if params[:file_name].nil?
