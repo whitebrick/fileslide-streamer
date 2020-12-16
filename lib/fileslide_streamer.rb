@@ -23,8 +23,6 @@ class FileslideStreamer < Sinatra::Base
     #handle JSON request
     is_json_request = request.content_type == 'application/json'
     if is_json_request 
-      #to send resonse header as json then set content type to json
-      content_type :json
       #cannot read 'request.body.read' more then once so assigned to variable 
       json_body = request.body.read
       unless json_body.empty?
