@@ -35,24 +35,24 @@ RSpec.describe FileslideStreamer do
 
   context '/download' do
     it 'succeed with 303 if the request file_name is blank' do
-      post '/download', uri_list: ["http://localhost:9293/random_bytes1.bin"].to_json
+      post '/download', fs_uri_list: ["http://localhost:9293/random_bytes1.bin"].to_json
       expect(last_response.status).to eq 303
     end
 
     it 'fails with 400 if the request uri_list is blank' do
-      post '/download', file_name: 'files.zip'
+      post '/download', fs_file_name: 'files.zip'
       expect(last_response.status).to eq 400
       expect(last_response.body).to eq 'Request must include non-empty file_name and uri_list parameters'
     end
 
     it 'fails with 400 if the request uri_list is not valid JSON' do
-      post '/download', file_name: 'files.zip', uri_list: "I'm not valid json"
+      post '/download', fs_file_name: 'files.zip', fs_uri_list: "I'm not valid json"
       expect(last_response.status).to eq 400
       expect(last_response.body).to eq 'uri_list is not a valid JSON array'
     end
 
     it 'fails with 400 if some of the uris in the request occur more than once' do
-      post '/download', file_name: 'files.zip', uri_list: [
+      post '/download', fs_file_name: 'files.zip', fs_uri_list: [
         "http://localhost:9293/random_bytes1.bin",
         "http://localhost:9293/random_bytes1.bin",
         "http://localhost:9293/random_bytes2.bin"
@@ -65,7 +65,7 @@ RSpec.describe FileslideStreamer do
       expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
         and_return({authorized: false, unauthorized_html: "NOT ALLOWED"})
 
-      post '/download', file_name: 'files.zip', uri_list: ["http://example.com/not_allowed_file"].to_json
+      post '/download', fs_file_name: 'files.zip', fs_uri_list: ["http://example.com/not_allowed_file"].to_json
       
       # Follow the redirect
       expect(last_response.status).to eq 303
@@ -79,7 +79,7 @@ RSpec.describe FileslideStreamer do
       expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
         and_return({authorized: true, unauthorized_html: nil})
 
-      post '/download', file_name: 'files.zip', uri_list: [
+      post '/download', fs_file_name: 'files.zip', fs_uri_list: [
         # http://example.invalid... preferred (shouldn't exist per RFC 6761)
         # but some ISPs still respond with 200 so localhost:9999 used instead
         "http://localhost:9999/allowed_but_unavailable_file1",
@@ -102,7 +102,7 @@ RSpec.describe FileslideStreamer do
       expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
         and_return({authorized: true, unauthorized_html: nil})
 
-      post '/download', file_name: 'files.zip', uri_list: [
+      post '/download', fs_file_name: 'files.zip', fs_uri_list: [
         "http://example.com/allowed_but_unavailable_file1",
         "http://example.com/allowed_but_unavailable_file2",
         "http://localhost:9293/random_bytes1.bin",
@@ -126,7 +126,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-          post '/download', file_name: 'zero_files.zip', uri_list: [].to_json
+          post '/download', fs_file_name: 'zero_files.zip', fs_uri_list: [].to_json
 
           # Follow the redirect
           expect(last_response.status).to eq 303
@@ -155,7 +155,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-          post '/download', file_name: 'three_files.zip', uri_list: [
+          post '/download', fs_file_name: 'three_files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin",
             "http://localhost:9293/random_bytes3.bin",
@@ -216,7 +216,7 @@ RSpec.describe FileslideStreamer do
           expect_any_instance_of(UpstreamAPI).to receive(:report)
           expect_any_instance_of(ZipTricks::Streamer).to receive(:write_stored_file).and_raise(HTTP::Error.new("BOOM!"))
 
-          post '/download', file_name: 'one_file.zip', uri_list: [
+          post '/download', fs_file_name: 'one_file.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
 
@@ -234,7 +234,7 @@ RSpec.describe FileslideStreamer do
               and_return({authorized: true, unauthorized_html: nil})
             expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-            post '/download', file_name: 'three_files.zip', uri_list: [
+            post '/download', fs_file_name: 'three_files.zip', fs_uri_list: [
               "http://localhost:9293/random_bytes1.bin",
               "http://localhost:9293/random_bytes2.bin",
               "http://localhost:9293/random_bytes3.bin",
@@ -294,8 +294,8 @@ RSpec.describe FileslideStreamer do
             expect_any_instance_of(UpstreamAPI).to receive(:report)
 
             post '/download', {
-              file_name: 'three_files.zip', 
-              uri_list: [
+              fs_file_name: 'three_files.zip', 
+              fs_uri_list: [
                 "http://localhost:9293/random_bytes1.bin",
                 "http://localhost:9293/random_bytes2.bin",
                 "http://localhost:9293/random_bytes3.bin",
@@ -357,7 +357,7 @@ RSpec.describe FileslideStreamer do
             expect_any_instance_of(UpstreamAPI).to receive(:report)
 
             post '/download', {
-              uri_list: [
+              fs_uri_list: [
                 "http://localhost:9293/random_bytes1.bin",
                 "http://localhost:9293/random_bytes2.bin",
                 "http://localhost:9293/random_bytes3.bin",
@@ -413,7 +413,7 @@ RSpec.describe FileslideStreamer do
       context 'when streaming partial zips' do
         it 'returns 400 if an invalid range header is requested' do
           header 'Range', 'gimme all the bytes'
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin",
             "http://localhost:9293/random_bytes3.bin"
@@ -429,7 +429,7 @@ RSpec.describe FileslideStreamer do
 
         it 'returns 416 if a multipart range is requested' do
           header 'Range', 'bytes=0-50, 100-150'
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin",
             "http://localhost:9293/random_bytes3.bin"
@@ -448,7 +448,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
 
           header 'Range', 'bytes=123456-'
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
 
@@ -465,7 +465,7 @@ RSpec.describe FileslideStreamer do
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
           header 'Range', 'bytes=50-0'
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
           ].to_json
 
@@ -485,7 +485,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
@@ -526,7 +526,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
@@ -580,7 +580,7 @@ RSpec.describe FileslideStreamer do
             and_return({authorized: true, unauthorized_html: nil})
           expect_any_instance_of(UpstreamAPI).to receive(:report)
 
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
@@ -623,7 +623,7 @@ RSpec.describe FileslideStreamer do
           expect_any_instance_of(ZipStreamer).to receive(:fetch_single_checksum).exactly(2).times.and_call_original
 
           header 'Range', 'bytes=0-'
-          post '/download', file_name: 'files.zip', uri_list: [
+          post '/download', fs_file_name: 'files.zip', fs_uri_list: [
             "http://localhost:9293/random_bytes1.bin",
             "http://localhost:9293/random_bytes2.bin"
           ].to_json
