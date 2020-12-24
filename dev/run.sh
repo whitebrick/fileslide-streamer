@@ -48,6 +48,8 @@ echo `docker-compose up -d`
 
 docker-compose ps
 
+echo 'Downloading test zip'
+
 wget --post-data 'file_name=test.zip&uri_list=[
         "http://file_server:8084/fs_test_file-10kb-a.bin",
         "http://file_server:8086/fs_test_file-100mb-a.bin","http://file_server:8086/fs_test_file-100mb-b.bin"
