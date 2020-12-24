@@ -43,19 +43,5 @@ services:
       - ./test/spec/fixtures:/usr/share/nginx
     ports:
       - "8084:8084"
-  file_server2:
-    build:
-      dockerfile: Dockerfile.file_server
-      context: ./
-    volumes:
-      - ./test/spec/fixtures:/usr/share/nginx
-    ports:
-      - "8085:8084"
-  file_server3:
-    build:
-      dockerfile: Dockerfile.file_server
-      context: ./
-    volumes:
-      - ./test/spec/fixtures:/usr/share/nginx
-    ports:
-      - "8086:8084"
+      - "8085:8085"
+      - "8086:8086"
