@@ -34,9 +34,9 @@ else
   dd if=/dev/zero of=fs_test_file-1mb-a.bin bs=1M  count=1
   dd if=/dev/zero of=fs_test_file-1mb-b.bin bs=1M  count=1
   dd if=/dev/zero of=fs_test_file-1mb-c.bin bs=1M  count=1
-  dd if=/dev/zero of=fs_test_file-10kb-a.bin bs=10M  count=1
-  dd if=/dev/zero of=fs_test_file-10kb-b.bin bs=10M  count=1
-  dd if=/dev/zero of=fs_test_file-10kb-c.bin bs=10M  count=1
+  dd if=/dev/zero of=fs_test_file-10mb-a.bin bs=10M  count=1
+  dd if=/dev/zero of=fs_test_file-10mb-b.bin bs=10M  count=1
+  dd if=/dev/zero of=fs_test_file-10mb-c.bin bs=10M  count=1
   dd if=/dev/zero of=fs_test_file-100mb-a.bin bs=100M  count=1
   dd if=/dev/zero of=fs_test_file-100mb-b.bin bs=100M  count=1
   dd if=/dev/zero of=fs_test_file-100mb-c.bin bs=100M  count=1
@@ -51,7 +51,7 @@ docker-compose ps
 echo 'Downloading test zip'
 
 wget --post-data 'file_name=test.zip&uri_list=[
-        "http://file_server:8084/fs_test_file-10kb-a.bin",
+        "http://file_server:8084/fs_test_file-10mb-a.bin",
         "http://file_server:8086/fs_test_file-100mb-a.bin","http://file_server:8086/fs_test_file-100mb-b.bin"
       ]' http://localhost:8081/download
 
