@@ -18,6 +18,21 @@ class FileslideStreamer < Sinatra::Base
     "All good\n"
   end
 
+  get '/clear_test_records' do
+    FileslideStreamer.with_redis do |redis|
+      redis.keys.each do |key|
+        if key.start_with?("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee")
+          stored_params = JSON.parse(redis.get(key))
+          (stored_params['uri_list'] || []).each do |uri|
+            redis.del(uri)
+          end
+          redis.del(key)
+        end
+      end
+    end
+    "Test records deleted successfully"
+  end
+
   post "/download" do
     puts "** POST params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_file_name]=#{params[:fs_file_name]} params[:fs_uri_list]=#{params[:fs_uri_list]}"
     #handle JSON request
@@ -189,7 +204,7 @@ class FileslideStreamer < Sinatra::Base
   end
 
   def self.init!
-    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new }
+    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new() }
   end
 
   def self.with_redis
