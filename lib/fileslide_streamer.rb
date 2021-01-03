@@ -21,13 +21,13 @@ class FileslideStreamer < Sinatra::Base
   post "/download" do
     puts "** POST params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_file_name]=#{params[:fs_file_name]} params[:fs_uri_list]=#{params[:fs_uri_list]}"
     #handle JSON request
-    is_json_request = request.content_type == 'application/json'
+    is_json_request = request.content_type.downcase == 'application/json'
     if is_json_request 
       #cannot read 'request.body.read' more then once so assigned to variable 
       json_body = request.body.read
       @params = JSON.parse(json_body, symbolize_names: true) unless json_body.empty?
     end
-    params[:fs_file_name] = DEFAULT_FILE_NAME if params[:fs_file_name].nil?
+    params[:fs_file_name] = DEFAULT_FILE_NAME if (params[:fs_file_name].nil? || params[:fs_file_name] == '')
     # Parse the request and do some initial filtering for badly formatted requests:
     halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:fs_file_name].nil? && params[:fs_file_name].length>0) &&
       (!params[:fs_uri_list].nil? && params[:fs_uri_list].length>0)
@@ -56,7 +56,7 @@ class FileslideStreamer < Sinatra::Base
     # using the 303 status code forces the browser to change the method to GET.
     redirect to("#{ENV.fetch("BASE_URL")}/stream/#{request_id}"), 303
   rescue JSON::ParserError, KeyError => e
-    halt 400, 'uri_list is not a valid JSON array'
+    halt 400, "#{(is_json_request ? 'request body' : 'uri_list')} is not valid JSON"
   end
 
   get "/stream/:fs_request_id" do
