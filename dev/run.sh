@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 unameOut="$(uname -s)"
 case "${unameOut}" in
     Linux*)     machine=Linux;;
@@ -54,4 +55,3 @@ wget --post-data 'file_name=test.zip&uri_list=[
         "http://file_server:8084/fs_test_file-10mb-a.bin",
         "http://file_server:8086/fs_test_file-100mb-a.bin","http://file_server:8086/fs_test_file-100mb-b.bin"
       ]' http://localhost:8081/download
-
