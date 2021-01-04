@@ -10,8 +10,9 @@ esac
 
 echo "OPERATING SYSTEM: ${machine}"
 # directory=`SCRIPTPATH="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"`
-
 # echo "Directory is $directory"
+dirPath=`pwd`
+
 if [ ${machine} = 'Mac' ]
 then
   cd test/spec/fixtures
@@ -42,6 +43,10 @@ else
   dd if=/dev/zero of=fs_test_file-100mb-b.bin bs=100M  count=1
   dd if=/dev/zero of=fs_test_file-100mb-c.bin bs=100M  count=1
 fi
+
+cd "${dirPath}/dev/docker"
+echo "pwd:"
+echo `pwd`
 
 echo 'Launching docker containers'
 

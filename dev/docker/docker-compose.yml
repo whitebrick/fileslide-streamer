@@ -3,11 +3,11 @@ services:
   redis:
     image: redis
     volumes:
-      - ./tmp/db/redis:/var/lib/redis/data
+      - ../../tmp/db/redis:/var/lib/redis/data
 
   fs_streamer_nginx:
     build:
-      dockerfile: Dockerfile.fs_streamer_nginx
+      dockerfile: ./Dockerfile.fs_streamer_nginx
       context: ./
     ports:
       - "8081:8081"
@@ -16,13 +16,15 @@ services:
 
   fs_streamer_rack:
     stdin_open: true
-    build: .
+    build:
+      dockerfile: ./dev/docker/Dockerfile
+      context: ../../
     command: bash -c "bundle exec puma -b 'tcp://0.0.0.0:9292'"
     environment:
       - UPSTREAM_API_LOCATION=http://fs_upstream_api:8083
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - .:/app
+      - ../../:/app
     ports:
       - "9292:9292"
     depends_on:
@@ -30,17 +32,17 @@ services:
 
   fs_upstream_api:
     build:
-      dockerfile: Dockerfile.fs_upstream_api
+      dockerfile: ./Dockerfile.fs_upstream_api
       context: ./
     ports:
       - "8083:8083"
 
   file_server:
     build:
-      dockerfile: Dockerfile.file_server
+      dockerfile: ./Dockerfile.file_server
       context: ./
     volumes:
-      - ./test/spec/fixtures:/usr/share/nginx
+      - ../../test/spec/fixtures:/usr/share/nginx
     ports:
       - "8084:8084"
       - "8085:8085"

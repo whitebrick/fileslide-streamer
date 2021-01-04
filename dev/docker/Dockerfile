@@ -9,8 +9,3 @@ COPY Gemfile.lock /app/Gemfile.lock
 RUN gem install bundler:2.1.4
 RUN bundle install
 COPY . /app
-
-# Add a script to be executed every time the container starts.
-
-# Start the main process.
-#CMD ["rails", "server", "-b", "0.0.0.0"]
