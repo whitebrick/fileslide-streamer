@@ -1,3 +1,13 @@
+set :stage, :production
+set :default_env, 'RACK_ENV' => 'production'
+set :puma_workers, 3
+set :puma_threads, [0, 8]
+set :puma_bind, "tcp://0.0.0.0:9292"
+server '54.81.250.108', user: 'ec2-user', roles: %w{web app db}
+
+
+
+
 # server-based syntax
 # ======================
 # Defines a single server with a list of roles and multiple properties.

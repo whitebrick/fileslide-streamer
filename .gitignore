@@ -68,6 +68,4 @@ yarn-debug.log*
 
 # local osx dev
 _start_streamer.sh
-_start_redis.sh
-_stop_redis.sh
 test/bucket_data

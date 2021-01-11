@@ -3,6 +3,7 @@ Package and stream files for download
 
 - [Requirements & Scope](doc/requirments.md)
 - [Specs](doc/specs.md)
+- [Server Setup](doc/new_server_setup.md)
 
 ## Running and setup
 
