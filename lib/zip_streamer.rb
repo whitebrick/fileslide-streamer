@@ -40,11 +40,12 @@ class ZipStreamer
   end
 
   class StreamingBody
-    def initialize(request_id:, segments: , start:, stop:)
+    def initialize(request_id:, segments: , start:, stop:, client_headers:)
       @request_id = request_id
       @segments = segments
       @start = start
       @stop = stop
+      @client_headers = client_headers || {}
     end
 
     def each
@@ -68,7 +69,7 @@ class ZipStreamer
           when String
             yield segment
           when SingleFile
-            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
+            http = HTTP.timeout(connect: 5, read: 10).headers(@client_headers).follow(max_hops: 2)
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
             written_uri_list << segment.uri
@@ -86,7 +87,7 @@ class ZipStreamer
           when String
             yield segment[@start..-1]
           when SingleFile
-            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"})
+            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"}.merge(@client_headers))
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
             written_uri_list << segment.uri
@@ -105,7 +106,7 @@ class ZipStreamer
           when String
             yield segment[@start..@stop]
           when SingleFile
-            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{@stop}"})
+            http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{@stop}"}.merge(@client_headers))
             resp = http.get(segment.uri)
             raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
             written_uri_list << segment.uri
@@ -135,7 +136,8 @@ class ZipStreamer
     end
   end
 
-  def initialize
+  def initialize(client_headers: {})
+    @client_headers = client_headers
     @files = []
   end
 
@@ -173,7 +175,7 @@ class ZipStreamer
       bytes_total = 0
       written_uri_list = []
       current_etag = nil
-      http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2)
+      http = HTTP.timeout(connect: 5, read: 10).headers(@client_headers).follow(max_hops: 2)
       @files.each do |singlefile|
         checksummer = ZipTricks::StreamCRC32.new
         zip.write_stored_file(singlefile.zip_name) do |sink|
@@ -251,7 +253,7 @@ class ZipStreamer
     zipstreamer.close
     zip_segments << string_capturer.string.dup
     # Combining the segments into a something that can be streamed and can have a range applied:
-    StreamingBody.new(request_id: request_id, segments: zip_segments, start: start, stop: stop)
+    StreamingBody.new(request_id: request_id, segments: zip_segments, start: start, stop: stop, client_headers: @client_headers)
   end
 
 
@@ -372,9 +374,9 @@ class ZipStreamer
     end
   end
 
-  def fetch_checksum_part(uri:, range: )
+  def fetch_checksum_part(uri:, range:)
     checksummer = ZipTricks::StreamCRC32.new
-    http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{range.begin}-#{range.end}"})
+    http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{range.begin}-#{range.end}"}.merge(@client_headers))
     resp = http.get(uri)
     raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
     resp.body.each do |chunk|

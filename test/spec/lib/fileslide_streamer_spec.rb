@@ -48,7 +48,7 @@ RSpec.describe FileslideStreamer do
     it 'fails with 400 if the request uri_list is not valid JSON' do
       post '/download', fs_file_name: 'files.zip', fs_uri_list: "I'm not valid json"
       expect(last_response.status).to eq 400
-      expect(last_response.body).to eq 'uri_list is not a valid JSON array'
+      expect(last_response.body).to eq 'uri_list is not valid JSON'
     end
 
     it 'fails with 400 if some of the uris in the request occur more than once' do
