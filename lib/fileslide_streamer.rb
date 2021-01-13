@@ -3,7 +3,61 @@ require 'securerandom'
 class FileslideStreamer < Sinatra::Base
   DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
   DEFAULT_FILE_NAME = 'download.zip'
-
+  CLIENT_HEADER_START_WITH = 'fs_add_header-'
+  EXCLUDED_HEADERS = [
+    'Host',
+    'Date',
+    'Range',
+    'Transfer-Encoding',
+    'Accept-Ranges',
+    'Content-Disposition',
+    'X-Accel-Buffering',
+    'Content-Encoding',
+    'SCRIPT_NAME',
+    'QUERY_STRING',
+    'SERVER_PROTOCOL',
+    'SERVER_SOFTWARE',
+    'GATEWAY_INTERFACE',
+    'REQUEST_METHOD',
+    'REQUEST_PATH',
+    'REQUEST_URI',
+    'HTTP_VERSION',
+    'HTTP_HOST',
+    'HTTP_CONNECTION',
+    'HTTP_CACHE_CONTROL',
+    'HTTP_USER_AGENT',
+    'HTTP_POSTMAN_TOKEN',
+    'HTTP_ACCEPT',
+    'HTTP_SEC_FETCH_SITE',
+    'HTTP_SEC_FETCH_MODE',
+    'HTTP_SEC_FETCH_DEST',
+    'HTTP_ACCEPT_ENCODING',
+    'HTTP_ACCEPT_LANGUAGE',
+    'SERVER_NAME',
+    'SERVER_PORT',
+    'PATH_INFO',
+    'REMOTE_ADDR',
+    "rack.version",
+    "rack.errors",
+    "rack.multithread",
+    "rack.multiprocess",
+    "rack.run_once",
+    "puma.socket",
+    "rack.hijack?",
+    "rack.hijack",
+    "rack.input",
+    "rack.url_scheme",
+    "rack.after_reply",
+    "puma.config",
+    "sinatra.commonlogger",
+    "rack.tempfiles",
+    "rack.logger",
+    "rack.request.query_string",
+    "rack.request.query_hash",
+    "sinatra.route",
+    'HTTP_RANGE'
+  ]
+  
   FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
     def to_s
       "#{uri.to_s} [#{response_code}]\n"
@@ -65,7 +119,7 @@ class FileslideStreamer < Sinatra::Base
     end
 
     FileslideStreamer.with_redis do |redis|
-      redis.set(request_id, {file_name: zip_filename, uri_list: uri_list}.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
+      redis.set(request_id, ({file_name: zip_filename, uri_list: uri_list}.merge(params)).to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
     # using the 303 status code forces the browser to change the method to GET.
@@ -87,7 +141,19 @@ class FileslideStreamer < Sinatra::Base
     decoded_params = JSON.parse(stored_params, symbolize_names: true)
     zip_filename = decoded_params[:file_name]
     uri_list = decoded_params[:uri_list]
-    
+    client_headers = {}
+    #Get client headers that can be forwarded with request
+    if(decoded_params[:fs_forward_all_headers].to_s == 'true')
+      client_headers = request.env.select{ |key, val| !FileslideStreamer::EXCLUDED_HEADERS.include?(key) }
+    else
+      decoded_params.each do |key, val|
+        if key.to_s.start_with?(CLIENT_HEADER_START_WITH)
+          header_key = key.to_s.split(CLIENT_HEADER_START_WITH).last
+          client_headers[header_key] = val unless FileslideStreamer::EXCLUDED_HEADERS.include?(header_key)
+        end
+      end
+    end
+
     ranged_request = !request.env['HTTP_RANGE'].nil?
     range_start, range_stop = if ranged_request
       halt 400, 'Invalid Range header' unless request.env['HTTP_RANGE'].start_with? 'bytes='
@@ -125,9 +191,9 @@ class FileslideStreamer < Sinatra::Base
     # We do a range request the first byte instead of doing a HEAD request
     # because S3 presigned URLs (and possibly other cloud providers too) are
     # only valid for GET.
-    availability_checking_http = HTTP.timeout(connect: 5, read: 10).headers("Range" => "bytes=0-0").follow(max_hops: 2)
+    availability_checking_http = HTTP.timeout(connect: 5, read: 10).headers({"Range" => "bytes=0-0"}.merge(client_headers)).follow(max_hops: 2)
     failed_uris = []
-    zip_streamer = ZipStreamer.new
+    zip_streamer = ZipStreamer.new(client_headers: client_headers)
     uri_list.each do |uri|
       begin
         resp = availability_checking_http.get(uri)
