@@ -2,6 +2,7 @@ require 'securerandom'
 
 class FileslideStreamer < Sinatra::Base
   DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
+  DEFAULT_FILE_NAME = 'download.zip'
 
   FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
     def to_s
@@ -17,20 +18,47 @@ class FileslideStreamer < Sinatra::Base
     "All good\n"
   end
 
-  post "/download" do
-    puts "** POST params[:request_id]=#{params[:request_id]} params[:file_name]=#{params[:file_name]} params[:uri_list]=#{params[:uri_list]}"
-    # Parse the request and do some initial filtering for badly formatted requests:
-    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:file_name].nil? && params[:file_name].length>0) &&
-      (!params[:uri_list].nil? && params[:uri_list].length>0)
+  get '/clear_test_records' do
+    FileslideStreamer.with_redis do |redis|
+      redis.keys.each do |key|
+        if key.start_with?("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee")
+          stored_params = JSON.parse(redis.get(key))
+          (stored_params['uri_list'] || []).each do |uri|
+            redis.del(uri)
+          end
+          redis.del(key)
+        end
+      end
+    end
+    "Test records deleted successfully"
+  end
 
-    zip_filename = params[:file_name]
-    uri_list = JSON.parse(params[:uri_list].gsub(/\s/,''))
+  post "/download" do
+    puts "** POST params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_file_name]=#{params[:fs_file_name]} params[:fs_uri_list]=#{params[:fs_uri_list]}"
+    #handle JSON request
+    is_json_request = request.content_type.downcase == 'application/json'
+    if is_json_request 
+      #cannot read 'request.body.read' more then once so assigned to variable 
+      json_body = request.body.read
+      @params = JSON.parse(json_body, symbolize_names: true) unless json_body.empty?
+    end
+    params[:fs_file_name] = DEFAULT_FILE_NAME if (params[:fs_file_name].nil? || params[:fs_file_name] == '')
+    # Parse the request and do some initial filtering for badly formatted requests:
+    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:fs_file_name].nil? && params[:fs_file_name].length>0) &&
+      (!params[:fs_uri_list].nil? && params[:fs_uri_list].length>0)
+
+    zip_filename = params[:fs_file_name]
+    if params[:fs_uri_list].is_a?(Array)
+      uri_list = params[:fs_uri_list]
+    else
+      uri_list = JSON.parse(params[:fs_uri_list].gsub(/\s/,''))
+    end
 
     halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
 
     # request_id is optional - passed through to report for end-to-end testing
-    if !params[:request_id].nil?
-      request_id = params[:request_id].to_s.downcase
+    if !params[:fs_request_id].nil?
+      request_id = params[:fs_request_id].to_s.downcase
       halt 400, 'Malformed UUID for request_id parameter' unless /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
     else
       request_id = SecureRandom.uuid
@@ -43,12 +71,12 @@ class FileslideStreamer < Sinatra::Base
     # using the 303 status code forces the browser to change the method to GET.
     redirect to("#{ENV.fetch("BASE_URL")}/stream/#{request_id}"), 303
   rescue JSON::ParserError, KeyError => e
-    halt 400, 'uri_list is not a valid JSON array'
+    halt 400, "#{(is_json_request ? 'request body' : 'uri_list')} is not valid JSON"
   end
 
-  get "/stream/:request_id" do
-    puts "** GET #{params[:request_id]}"
-    request_id = params[:request_id]
+  get "/stream/:fs_request_id" do
+    puts "** GET #{params[:fs_request_id]}"
+    request_id = params[:fs_request_id]
     halt 400 unless request_id
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(request_id)
