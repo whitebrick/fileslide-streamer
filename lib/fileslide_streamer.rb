@@ -204,7 +204,7 @@ class FileslideStreamer < Sinatra::Base
   end
 
   def self.init!
-    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new() }
+    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new(url: ENV.fetch("REDIS_URL")) }
   end
 
   def self.with_redis
