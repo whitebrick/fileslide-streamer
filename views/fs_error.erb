@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://hello.fileslide.io/stylesheets/bootstrap.min.css">
+    <style>
+      .fslogo {
+        height: 20px;
+        padding: 0px;
+        margin-right: 8px;
+        margin-bottom: 4px;
+        border: 0px;
+        display: inline-block;
+      }
+    </style>
+    <title>
+      Error
+    </title>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row h-100 mt-5">
+        <div class="col-lg-6 mx-auto my-auto">
+          <div class="card rounded-2 border">
+            <div class="card-header">
+              <h6 class="mb-0">
+                <img src="https://hello.fileslide.io/assets/fileslide-logo-white-bg.svg" class="fslogo">
+                FileSlide Error
+              </h6>
+            </div>
+            <div class="card-body">
+              <%=error_message%>
+              <% if !@error_records.nil? && @error_records.size>0 %>
+                <ul class="mt-3">
+                  <% @error_records.each do |record| %>
+                    <li><%=record %></li>
+                  <% end %>
+                </ul>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

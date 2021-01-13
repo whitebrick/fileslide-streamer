@@ -67,5 +67,4 @@ yarn-debug.log*
 !/storage/.keep
 
 # local osx dev
-_start_streamer.sh
 test/bucket_data

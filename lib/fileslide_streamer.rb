@@ -1,63 +1,13 @@
 require 'securerandom'
 
 class FileslideStreamer < Sinatra::Base
+
   DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
   DEFAULT_FILE_NAME = 'download.zip'
-  CLIENT_HEADER_START_WITH = 'fs_add_header-'
-  EXCLUDED_HEADERS = [
-    'Host',
-    'Date',
-    'Range',
-    'Transfer-Encoding',
-    'Accept-Ranges',
-    'Content-Disposition',
-    'X-Accel-Buffering',
-    'Content-Encoding',
-    'SCRIPT_NAME',
-    'QUERY_STRING',
-    'SERVER_PROTOCOL',
-    'SERVER_SOFTWARE',
-    'GATEWAY_INTERFACE',
-    'REQUEST_METHOD',
-    'REQUEST_PATH',
-    'REQUEST_URI',
-    'HTTP_VERSION',
-    'HTTP_HOST',
-    'HTTP_CONNECTION',
-    'HTTP_CACHE_CONTROL',
-    'HTTP_USER_AGENT',
-    'HTTP_POSTMAN_TOKEN',
-    'HTTP_ACCEPT',
-    'HTTP_SEC_FETCH_SITE',
-    'HTTP_SEC_FETCH_MODE',
-    'HTTP_SEC_FETCH_DEST',
-    'HTTP_ACCEPT_ENCODING',
-    'HTTP_ACCEPT_LANGUAGE',
-    'SERVER_NAME',
-    'SERVER_PORT',
-    'PATH_INFO',
-    'REMOTE_ADDR',
-    "rack.version",
-    "rack.errors",
-    "rack.multithread",
-    "rack.multiprocess",
-    "rack.run_once",
-    "puma.socket",
-    "rack.hijack?",
-    "rack.hijack",
-    "rack.input",
-    "rack.url_scheme",
-    "rack.after_reply",
-    "puma.config",
-    "sinatra.commonlogger",
-    "rack.tempfiles",
-    "rack.logger",
-    "rack.request.query_string",
-    "rack.request.query_hash",
-    "sinatra.route",
-    'HTTP_RANGE'
-  ]
-  
+  CLIENT_CUSTOM_HEADER_PREFIX = 'fs_add_header-'
+
+  set :views, File.dirname(__FILE__)+'/../views'
+
   FailedUri = Struct.new(:uri, :response_code, keyword_init: true) do
     def to_s
       "#{uri.to_s} [#{response_code}]\n"
@@ -68,7 +18,7 @@ class FileslideStreamer < Sinatra::Base
     redirect to('https://fileslide.io')
   end
 
-  get "/healthcheck" do
+  get "/health_check" do
     "All good\n"
   end
 
@@ -89,66 +39,111 @@ class FileslideStreamer < Sinatra::Base
 
   post "/download" do
     puts "** POST params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_file_name]=#{params[:fs_file_name]} params[:fs_uri_list]=#{params[:fs_uri_list]}"
-    #handle JSON request
-    is_json_request = request.content_type.downcase == 'application/json'
-    if is_json_request 
-      #cannot read 'request.body.read' more then once so assigned to variable 
+
+    @error_records = []
+
+    # Inital requests may be either form url encoded (default) or json encoded
+    is_json_request = (request.content_type.downcase == 'application/json')
+    if is_json_request
+      @response_format = :json
+      # cannot 'request.body.read' more then once so assigned to variable 
       json_body = request.body.read
-      @params = JSON.parse(json_body, symbolize_names: true) unless json_body.empty?
-    end
-    params[:fs_file_name] = DEFAULT_FILE_NAME if (params[:fs_file_name].nil? || params[:fs_file_name] == '')
-    # Parse the request and do some initial filtering for badly formatted requests:
-    halt 400, 'Request must include non-empty file_name and uri_list parameters' unless (!params[:fs_file_name].nil? && params[:fs_file_name].length>0) &&
-      (!params[:fs_uri_list].nil? && params[:fs_uri_list].length>0)
-
-    zip_filename = params[:fs_file_name]
-    if params[:fs_uri_list].is_a?(Array)
-      uri_list = params[:fs_uri_list]
-    else
-      uri_list = JSON.parse(params[:fs_uri_list].gsub(/\s/,''))
+      parsed_params = FileslideStreamer.valid_json(json_body)
+      halt 400, 'MALFORMED_JSON_BODY' if parsed_params.nil?
+      params.merge!(parsed_params)
     end
 
-    halt 400, 'Duplicate URIs found' unless uri_list.uniq.length == uri_list.length
+    # how errors will be returned (defaults set above)
+    if !params[:fs_response_format].nil?
+      sym = params[:fs_response_format].to_s.downcase.to_sym
+      if [:json, :redirect].include?(sym)
+        @response_format = sym
+      end
+    end
 
-    # request_id is optional - passed through to report for end-to-end testing
+    # if asking for errors to be redirected must have valid URL
+    if @response_format==:redirect
+      if params[:fs_error_redirect_uri].nil? || params[:fs_error_redirect_uri].size==0
+        @response_format==:html
+        halt 400, 'EMPTY_ERROR_REDIRECT_URI'
+      elsif params[:fs_error_redirect_uri] !~ URI::regexp(['http','https'])
+        @response_format==:html
+        halt 400, 'INVALID_ERROR_REDIRECT_URI'
+      end
+    end
+    
+    # file name
+    zip_filename = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^-_0-9A-Za-z.]/, '_') : DEFAULT_FILE_NAME
+
+    # uri list - nb: a form url encoded request can have a json encoded uri list
+    uri_list = []
+    if !params[:fs_uri_list].nil? && params[:fs_uri_list].size>0
+      if params[:fs_uri_list].is_a?(Array)
+        uri_list = params[:fs_uri_list]
+      else
+        if !FileslideStreamer.valid_json(params[:fs_uri_list])
+          halt 400, 'MALFORMED_URI_LIST'
+        else
+          uri_list = JSON.parse(params[:fs_uri_list])
+        end
+      end
+    end
+    halt 400, 'EMPTY_URI_LIST' if uri_list.size==0
+    halt 400, 'DUPLICATE_URIS' if uri_list.uniq.size != uri_list.size
+
+    # check uris
+    @error_records = uri_list.map{|uri| uri if uri !~ URI::regexp(['http','https'])}.compact
+    halt 400, 'INVALID_URIS' if error_records.size > 0
+    
+    
+    # request_id is optional
+    # passed through to report for testing and tracking
     if !params[:fs_request_id].nil?
       request_id = params[:fs_request_id].to_s.downcase
-      halt 400, 'Malformed UUID for request_id parameter' unless /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
+      halt 400, 'MALFORMED_UUID' if !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
     else
       request_id = SecureRandom.uuid
     end
 
+    # if we get to here request is valid
     FileslideStreamer.with_redis do |redis|
       redis.set(request_id, ({file_name: zip_filename, uri_list: uri_list}.merge(params)).to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
     # using the 303 status code forces the browser to change the method to GET.
     redirect to("#{ENV.fetch("BASE_URL")}/stream/#{request_id}"), 303
-  rescue JSON::ParserError, KeyError => e
-    halt 400, "#{(is_json_request ? 'request body' : 'uri_list')} is not valid JSON"
+
+  rescue StandardError => e
+    @error_records = e.backtrace
+    halt 500
   end
 
   get "/stream/:fs_request_id" do
+    @response_format = 'html'
+    
     puts "** GET #{params[:fs_request_id]}"
-    request_id = params[:fs_request_id]
-    halt 400 unless request_id
+    request_id = params[:fs_request_id].to_s.downcase
+    halt 400, 'MISSING_REQUEST_ID' if request_id.nil?
+    halt 400, 'MALFORMED_UUID' if !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
+
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(request_id)
     end
-
-    halt 404, "This download is unavailable or has expired" if stored_params.nil?
+    halt 404, 'DOWNLOAD_EXPIRED' if stored_params.nil?
 
     decoded_params = JSON.parse(stored_params, symbolize_names: true)
     zip_filename = decoded_params[:file_name]
     uri_list = decoded_params[:uri_list]
     client_headers = {}
-    #Get client headers that can be forwarded with request
-    if(decoded_params[:fs_forward_all_headers].to_s == 'true')
-      client_headers = request.env.select{ |key, val| !FileslideStreamer::EXCLUDED_HEADERS.include?(key) }
-    else
+
+    # sometimes clients will want to forward headers when fetching data for authorization etc
+    # they can either set fs_forward_all_headers=true or put the header as a param with specific prefix
+    if(decoded_params[:fs_forward_all_headers].to_s.downcase == 'true')
+      client_headers = FileslideStreamer.filter_client_headers(request.env)
+    elsif decoded_params.keys.any?{ |param| param.start_with?(CLIENT_CUSTOM_HEADER_PREFIX) }
       decoded_params.each do |key, val|
-        if key.to_s.start_with?(CLIENT_HEADER_START_WITH)
-          header_key = key.to_s.split(CLIENT_HEADER_START_WITH).last
+        if key.to_s.start_with?(CLIENT_CUSTOM_HEADER_PREFIX)
+          header_key = key.to_s[(CLIENT_CUSTOM_HEADER_PREFIX.size)..]
           client_headers[header_key] = val unless FileslideStreamer::EXCLUDED_HEADERS.include?(header_key)
         end
       end
@@ -156,8 +151,8 @@ class FileslideStreamer < Sinatra::Base
 
     ranged_request = !request.env['HTTP_RANGE'].nil?
     range_start, range_stop = if ranged_request
-      halt 400, 'Invalid Range header' unless request.env['HTTP_RANGE'].start_with? 'bytes='
-      halt 416, 'Multipart ranges are not supported' if request.env['HTTP_RANGE'].include? ','
+      halt 400, 'INVALID_RANGE_HEADER' if !request.env['HTTP_RANGE'].downcase.start_with?('bytes=')
+      halt 416, 'MULTIPART_UNSUPPORTED' if request.env['HTTP_RANGE'].include? ','
       byte_range_requested = request.env['HTTP_RANGE'][6..-1] # drop 'bytes=' prefix
       byte_range_requested.split('-').map(&:to_i)
     else
@@ -172,7 +167,7 @@ class FileslideStreamer < Sinatra::Base
         if request.env['HTTP_RANGE'][-1] == '-'
           range_stop = -1
         else
-          halt 416, 'Range could not be parsed correctly'
+          halt 416, 'MALFORMED_RANGE'
         end
       elsif range_stop < range_start
         # See https://tools.ietf.org/html/rfc2616#section-14.35, we must ignore this Range header
@@ -183,7 +178,10 @@ class FileslideStreamer < Sinatra::Base
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
     verification_result = upstream.verify_uri_list(uri_list: uri_list, file_name: zip_filename)
-    halt 403, verification_result[:unauthorized_html] unless verification_result[:authorized]
+    if !verification_result[:authorized]
+      @error_records = verification_result[:unauthorized_uris]
+      halt 403, 'UNAUTHORIZED_URIS'
+    end
 
     puts "** URIs OK: #{uri_list}\n"
 
@@ -213,7 +211,8 @@ class FileslideStreamer < Sinatra::Base
       end
     end
     unless failed_uris.empty?
-      halt 502, construct_error_message(failed_uris: failed_uris)
+      @error_records = failed_uris
+      halt 502, 'FAILED_FETCHING_URIS'
     end
 
     puts "** zip_streamer.files.size: #{zip_streamer.files.size}\n"
@@ -231,7 +230,7 @@ class FileslideStreamer < Sinatra::Base
       'Content-Type' => 'binary/octet-stream',
     }
 
-    halt 416, 'Start of range outside zip size' if range_start >= total_size
+    halt 416, 'RANGE_NOT_SATISFIABLE' if range_start >= total_size
 
     # Create the body and any additional headers if required
     http_body = nil
@@ -256,9 +255,11 @@ class FileslideStreamer < Sinatra::Base
     [response_code,headers,http_body]
 
   rescue UpstreamAPI::UpstreamNotFoundError => e
-    halt 500, 'Error connecting to upstream'
+    @error_records = e.backtrace
+    halt 500, 'UPSTREAM_ERROR'
   rescue ZipStreamer::ChecksummingError => e
-    halt 500, 'Error occurred during checksum computation'
+    @error_records = e.backtrace
+    halt 500, 'CHECKSUM_ERROR'
   end
 
   def construct_error_message(failed_uris: )
@@ -276,4 +277,94 @@ class FileslideStreamer < Sinatra::Base
   def self.with_redis
     @@redis_pool.with { |redis| yield(redis) }
   end
+
+  def self.valid_json(value)
+    result = JSON.parse(value, symbolize_names: true)
+    return (result.is_a?(Hash) || result.is_a?(Array)) ? result : nil
+  rescue JSON::ParserError, TypeError
+    return nil
+  end
+
+  # Don't forward system headers
+  def self.filter_client_headers(header_hash)
+    [
+      'ACCEPT-RANGES',
+      'CONTENT-DISPOSITION',
+      'CONTENT-ENCODING',
+      'DATE',
+      'GATEWAY_INTERFACE',
+      'HOST',
+      'HTTP_*',
+      'PATH_*',
+      'PUMA.*',
+      'QUERY_STRING',
+      'RACK.*',
+      'RANGE',
+      'REMOTE_ADDR',
+      'REQUEST_*',
+      'SCRIPT_*',
+      'SERVER_*',
+      'SINATRA.*',
+      'TRANSFER-ENCODING',
+      'X-ACCEL-*'
+    ].each do |exclude_key|
+      header_hash.keys.each do |header_key|
+        if  ( exclude_key.end_with?('*') && header_key.upcase.start_with?(exclude_key.chop) ) ||
+            ( exclude_key==header_key.upcase )
+              header_hash.delete(header_key)
+        end
+      end
+    end
+    return header_hash
+  end
+
+  def self.error_message(error_key)
+    messages = {
+      UNKNOWN:                    'Unknown internal server error',
+      # 400
+      MALFORMED_JSON_BODY:        'The request body must be valid JSON when using the application/json content type header',
+      MALFORMED_URI_LIST:         'The fs_uri_list parameter value must either be a form-url encoded or json encoded array',
+      EMPTY_URI_LIST:             'The fs_uri_list parameter value must contain at least one URI',
+      DUPLICATE_URIS:             'The fs_uri_list parameter value contains duplicate URIs',
+      INVALID_URIS:               'The fs_uri_list parameter value contains one or more invalid URIs',
+      MISSING_REQUEST_ID:         'This URL is missing a Request ID',
+      INVALID_RANGE_HEADER:       'Range header must start with \'bytes=\'',
+      EMPTY_ERROR_REDIRECT_URI:   'The fs_error_redirect_uri parameter value is empty and is required for redirect response format',
+      INVALID_ERROR_REDIRECT_URI: 'The fs_error_redirect_uri parameter value is invalid and is required for redirect response format',
+      # 403
+      UNAUTHORIZED_URIS:          'One or more of the files requested for zipping have not been permitted',
+      # 404
+      DOWNLOAD_EXPIRED:           'This download is unavailable or has expired',
+      # 416
+      MULTIPART_UNSUPPORTED:      'Multipart ranges are not supported',
+      MALFORMED_RANGE:            'Range could not be parsed',
+      RANGE_NOT_SATISFIABLE:      'Start of range outside zip size',
+      # 500
+      UPSTREAM_ERROR:             'Could not connect to authorization server',
+      CHECKSUM_ERROR:             'Error occurred during checksum computation',
+      # 502
+      FAILED_FETCHING_URIS:       'One or more of the files requested for zipping could not be fetched'
+    }
+    error_key = :UNKNOWN if !messages.has_key?(error_key.to_sym)
+    return messages[error_key.to_sym]
+  end
+
+  error 400..510 do
+    error_key = !body[0].nil? ? body[0] : 'UNKNOWN'
+    error_message = FileslideStreamer.error_message(error_key)
+    error_hash = {
+      error_key: error_key,
+      error_message: error_message,
+      error_records: @error_records
+    }
+    if @response_format==:redirect
+      redirect "#{@response_redirect_url }?#{URI.encode_www_form({error_key: error_key})}"
+    elsif @response_format==:json
+      content_type :json
+      error_hash.to_json
+    else
+      erb :fs_error, locals: error_hash
+    end
+  end
+
 end
