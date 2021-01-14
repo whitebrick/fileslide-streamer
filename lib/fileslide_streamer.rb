@@ -358,7 +358,7 @@ class FileslideStreamer < Sinatra::Base
       error_records: @error_records
     }
     if @response_format==:redirect
-      redirect "#{@response_redirect_url }?#{URI.encode_www_form({error_key: error_key})}"
+      redirect "#{@response_redirect_url }?#{URI.encode_www_form({fs_error_key: error_key})}"
     elsif @response_format==:json
       content_type :json
       error_hash.to_json
