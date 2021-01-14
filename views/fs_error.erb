@@ -28,10 +28,10 @@
               </h6>
             </div>
             <div class="card-body">
-              <%=error_message%>
-              <% if !@error_records.nil? && @error_records.size>0 %>
+              <%=fs_error_message%>
+              <% if !fs_error_records.nil? && fs_error_records.size>0 %>
                 <ul class="mt-3">
-                  <% @error_records.each do |record| %>
+                  <% fs_error_records.each do |record| %>
                     <li><%=record %></li>
                   <% end %>
                 </ul>

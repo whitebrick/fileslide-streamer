@@ -369,12 +369,16 @@ class FileslideStreamer < Sinatra::Base
     error_key = !body[0].nil? ? body[0] : 'UNKNOWN'
     error_message = FileslideStreamer.error_message(error_key)
     error_hash = {
-      error_key: error_key,
-      error_message: error_message,
-      error_records: @error_records
+      fs_error_key: error_key,
+      fs_error_message: error_message,
+      fs_error_records: @error_records
     }
     if @response_format==:redirect
-      redirect to("#{@error_redirect_uri}?#{URI.encode_www_form({fs_error_key: error_key})}"), 303
+      redirect_uri = "#{@error_redirect_uri}?#{URI.encode_www_form({fs_error_key: error_key})}"
+      if !@error_records.nil? && @error_records.size>0
+        redirect_uri = "#{redirect_uri}&#{URI.encode_www_form({fs_error_records: @error_records.join(';')[0...1000]})}" # limit GET length
+      end
+      redirect to(redirect_uri), 303
     elsif @response_format==:json
       content_type :json
       error_hash.to_json
