@@ -38,9 +38,10 @@ class FileslideStreamer < Sinatra::Base
   end
 
   post "/download" do
-    puts "** POST params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_file_name]=#{params[:fs_file_name]} params[:fs_uri_list]=#{params[:fs_uri_list]}"
-
+    puts "** POST /download params[:fs_request_id]=#{params[:fs_request_id]} params[:fs_uri_list].size=#{ params[:fs_uri_list].size if !params[:fs_uri_list].nil?}"
     @error_records = []
+    @response_format = :html
+    @error_redirect_uri = nil
 
     # Inital requests may be either form url encoded (default) or json encoded
     is_json_request = (request.content_type.downcase == 'application/json')
@@ -69,11 +70,13 @@ class FileslideStreamer < Sinatra::Base
       elsif params[:fs_error_redirect_uri] !~ URI::regexp(['http','https'])
         @response_format==:html
         halt 400, 'INVALID_ERROR_REDIRECT_URI'
+      else
+        @error_redirect_uri = params[:fs_error_redirect_uri]
       end
     end
     
     # file name
-    zip_filename = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^-_0-9A-Za-z.]/, '_') : DEFAULT_FILE_NAME
+    zip_file_name = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^-_0-9A-Za-z.]/, '_') : DEFAULT_FILE_NAME
 
     # uri list - nb: a form url encoded request can have a json encoded uri list
     uri_list = []
@@ -95,7 +98,6 @@ class FileslideStreamer < Sinatra::Base
     @error_records = uri_list.map{|uri| uri if uri !~ URI::regexp(['http','https'])}.compact
     halt 400, 'INVALID_URIS' if error_records.size > 0
     
-    
     # request_id is optional
     # passed through to report for testing and tracking
     if !params[:fs_request_id].nil?
@@ -105,9 +107,30 @@ class FileslideStreamer < Sinatra::Base
       request_id = SecureRandom.uuid
     end
 
+    # sometimes clients will want to forward headers when fetching data for authorization etc
+    # they can either set fs_forward_all_headers=true or put the header as a param with specific prefix
+    client_headers = {}
+    if(params[:fs_forward_all_headers].to_s.downcase == 'true')
+      client_headers = FileslideStreamer.filter_client_headers(request.env)
+    elsif params.keys.any?{ |param| param.start_with?(CLIENT_CUSTOM_HEADER_PREFIX) }
+      params.each do |key, val|
+        if key.to_s.start_with?(CLIENT_CUSTOM_HEADER_PREFIX)
+          header_key = key.to_s[(CLIENT_CUSTOM_HEADER_PREFIX.size)..]
+          client_headers[header_key] = val
+        end
+      end
+      client_headers = FileslideStreamer.filter_client_headers(client_headers)
+    end
+
     # if we get to here request is valid
     FileslideStreamer.with_redis do |redis|
-      redis.set(request_id, ({file_name: zip_filename, uri_list: uri_list}.merge(params)).to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
+      redis.set(request_id, {
+        file_name: zip_file_name,
+        uri_list: uri_list,
+        client_headers: client_headers,
+        response_format: @response_format,
+        error_redirect_uri: @error_redirect_uri
+      }.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
     # using the 303 status code forces the browser to change the method to GET.
@@ -119,9 +142,13 @@ class FileslideStreamer < Sinatra::Base
   end
 
   get "/stream/:fs_request_id" do
-    @response_format = 'html'
-    
-    puts "** GET #{params[:fs_request_id]}"
+    puts "** GET /stream/:fs_request_id params[:fs_request_id]=#{params[:fs_request_id]}"
+    @error_records = []
+    @response_format = :html
+    @error_redirect_uri = nil
+
+    # until we have a key, default response is html
+    @response_format = :html
     request_id = params[:fs_request_id].to_s.downcase
     halt 400, 'MISSING_REQUEST_ID' if request_id.nil?
     halt 400, 'MALFORMED_UUID' if !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
@@ -132,22 +159,11 @@ class FileslideStreamer < Sinatra::Base
     halt 404, 'DOWNLOAD_EXPIRED' if stored_params.nil?
 
     decoded_params = JSON.parse(stored_params, symbolize_names: true)
-    zip_filename = decoded_params[:file_name]
-    uri_list = decoded_params[:uri_list]
-    client_headers = {}
-
-    # sometimes clients will want to forward headers when fetching data for authorization etc
-    # they can either set fs_forward_all_headers=true or put the header as a param with specific prefix
-    if(decoded_params[:fs_forward_all_headers].to_s.downcase == 'true')
-      client_headers = FileslideStreamer.filter_client_headers(request.env)
-    elsif decoded_params.keys.any?{ |param| param.start_with?(CLIENT_CUSTOM_HEADER_PREFIX) }
-      decoded_params.each do |key, val|
-        if key.to_s.start_with?(CLIENT_CUSTOM_HEADER_PREFIX)
-          header_key = key.to_s[(CLIENT_CUSTOM_HEADER_PREFIX.size)..]
-          client_headers[header_key] = val unless FileslideStreamer::EXCLUDED_HEADERS.include?(header_key)
-        end
-      end
-    end
+    zip_file_name       = decoded_params[:file_name]
+    uri_list            = decoded_params[:uri_list]
+    client_headers      = decoded_params[:client_headers]
+    @response_format    = decoded_params[:response_format]
+    @error_redirect_uri = decoded_params[:error_redirect_uri]
 
     ranged_request = !request.env['HTTP_RANGE'].nil?
     range_start, range_stop = if ranged_request
@@ -177,13 +193,13 @@ class FileslideStreamer < Sinatra::Base
 
     # Check for auth with upstream service
     upstream = UpstreamAPI.new
-    verification_result = upstream.verify_uri_list(uri_list: uri_list, file_name: zip_filename)
+    verification_result = upstream.verify_uri_list(uri_list: uri_list, file_name: zip_file_name)
     if !verification_result[:authorized]
       @error_records = verification_result[:unauthorized_uris]
       halt 403, 'UNAUTHORIZED_URIS'
     end
 
-    puts "** URIs OK: #{uri_list}\n"
+    puts "** URIs OK uri_list.size=#{uri_list.size}"
 
     # Do a head request to all the URIs to check they're available.
     # We do a range request the first byte instead of doing a HEAD request
@@ -196,7 +212,7 @@ class FileslideStreamer < Sinatra::Base
       begin
         resp = availability_checking_http.get(uri)
         puts "** availability_checking_http: #{uri} => #{resp.status}\n"
-        unless [200,206].include? resp.status
+        if ![200,206].include?(resp.status)
           failed_uris << FailedUri.new(uri: uri, response_code: resp.status)
           next
         end
@@ -210,12 +226,12 @@ class FileslideStreamer < Sinatra::Base
         failed_uris << FailedUri.new(uri: uri, response_code: HTTP::Response::Status.new(503))
       end
     end
-    unless failed_uris.empty?
+    if !failed_uris.empty?
       @error_records = failed_uris
       halt 502, 'FAILED_FETCHING_URIS'
     end
 
-    puts "** zip_streamer.files.size: #{zip_streamer.files.size}\n"
+    puts "** zip_streamer.files.size=#{zip_streamer.files.size}"
 
     # Deduplicate filenames if required
     zip_streamer.deduplicate_filenames!
@@ -224,7 +240,7 @@ class FileslideStreamer < Sinatra::Base
 
     headers = {
       'Accept-Ranges' => 'bytes',
-      'Content-Disposition' => "attachment; filename=\"#{zip_filename}\"",
+      'Content-Disposition' => "attachment; filename=\"#{zip_file_name}\"",
       'X-Accel-Buffering' => 'no', # disable nginx buffering
       'Content-Encoding' => 'none',
       'Content-Type' => 'binary/octet-stream',
@@ -358,7 +374,7 @@ class FileslideStreamer < Sinatra::Base
       error_records: @error_records
     }
     if @response_format==:redirect
-      redirect "#{@response_redirect_url }?#{URI.encode_www_form({fs_error_key: error_key})}"
+      redirect to("#{@error_redirect_uri}?#{URI.encode_www_form({fs_error_key: error_key})}"), 303
     elsif @response_format==:json
       content_type :json
       error_hash.to_json

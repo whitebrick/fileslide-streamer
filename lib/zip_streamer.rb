@@ -71,7 +71,7 @@ class ZipStreamer
           when SingleFile
             http = HTTP.timeout(connect: 5, read: 10).headers(@client_headers).follow(max_hops: 2)
             resp = http.get(segment.uri)
-            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") if !resp.status.success?
             written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
@@ -89,7 +89,7 @@ class ZipStreamer
           when SingleFile
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-"}.merge(@client_headers))
             resp = http.get(segment.uri)
-            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") if !resp.status.success?
             written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
@@ -108,7 +108,7 @@ class ZipStreamer
           when SingleFile
             http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{@start}-#{@stop}"}.merge(@client_headers))
             resp = http.get(segment.uri)
-            raise HTTP::Error.new("Error when downloading #{segment.uri}") unless resp.status.success?
+            raise HTTP::Error.new("Error when downloading #{segment.uri}") if !resp.status.success?
             written_uri_list << segment.uri
             resp.body.each do |chunk|
               bytes_total += chunk.size
@@ -180,7 +180,7 @@ class ZipStreamer
         checksummer = ZipTricks::StreamCRC32.new
         zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
-          raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
+          raise HTTP::Error.new("Error when downloading #{singlefile.uri}") if !!resp.status.success?
           current_etag = resp.headers["ETag"]
           puts "** zip.write_stored_file: #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
@@ -330,7 +330,7 @@ class ZipStreamer
         data = all_values[i]
         parsed_data = JSON.parse(data, symbolize_names: true) rescue nil
         raise ChecksummingError if parsed_data.nil?
-        raise ChecksummingError unless parsed_data.fetch(:state,nil) == "done"
+        raise ChecksummingError if !parsed_data.fetch(:state,nil) == "done"
         # we know that state == "done" at this point, so the crc must be set
         file.crc32 = parsed_data.fetch(:crc32)
       end
@@ -378,7 +378,7 @@ class ZipStreamer
     checksummer = ZipTricks::StreamCRC32.new
     http = HTTP.timeout(connect: 5, read: 10).follow(max_hops: 2).headers({"Range" => "bytes=#{range.begin}-#{range.end}"}.merge(@client_headers))
     resp = http.get(uri)
-    raise HTTP::Error.new("Error when downloading #{singlefile.uri}") unless resp.status.success?
+    raise HTTP::Error.new("Error when downloading #{singlefile.uri}") if !resp.status.success?
     resp.body.each do |chunk|
       checksummer << chunk
     end
