@@ -1,8 +1,7 @@
 # fileslide-streamer
 Package and stream files for download
 
-- [Requirements & Scope](doc/requirments.md)
-- [Specs](doc/specs.md)
+- [Docs](https://hello.fileslide.io/zaas-zip-as-a-service/api/)
 - [Server Setup](doc/new_server_setup.md)
 
 ## Running and setup

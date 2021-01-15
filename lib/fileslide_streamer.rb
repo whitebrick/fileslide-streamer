@@ -278,14 +278,6 @@ class FileslideStreamer < Sinatra::Base
     halt 500, 'CHECKSUM_ERROR'
   end
 
-  def construct_error_message(failed_uris: )
-    resp = "502 Bad Gateway\nThe following files could not be fetched:\n"
-    failed_uris.each do |f|
-      resp << f.to_s
-    end
-    resp
-  end
-
   def self.init!
     @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new(url: ENV.fetch("REDIS_URL")) }
   end
@@ -336,7 +328,7 @@ class FileslideStreamer < Sinatra::Base
 
   def self.error_message(error_key)
     messages = {
-      UNKNOWN:                    'Unknown internal server error',
+      UNKNOWN:                    'Unknown server error',
       # 400
       MALFORMED_JSON_BODY:        'The request body must be valid JSON when using the application/json content type header',
       MALFORMED_URI_LIST:         'The fs_uri_list parameter value must either be a form-url encoded or json encoded array',
