@@ -18,7 +18,7 @@ class FileslideStreamer < Sinatra::Base
     redirect to('https://fileslide.io')
   end
 
-  get "/health_check" do
+  get "/healthcheck" do
     "All good\n"
   end
 
