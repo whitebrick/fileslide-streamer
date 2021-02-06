@@ -180,7 +180,7 @@ class ZipStreamer
         checksummer = ZipTricks::StreamCRC32.new
         zip.write_stored_file(singlefile.zip_name) do |sink|
           resp = http.get(singlefile.uri)
-          raise HTTP::Error.new("Error when downloading #{singlefile.uri}") if !!resp.status.success?
+          raise HTTP::Error.new("Error when downloading #{singlefile.uri}") if !resp.status.success?
           current_etag = resp.headers["ETag"]
           puts "** zip.write_stored_file: #{singlefile.uri} => #{resp.status}\n"
           resp.body.each do |chunk|
@@ -330,7 +330,7 @@ class ZipStreamer
         data = all_values[i]
         parsed_data = JSON.parse(data, symbolize_names: true) rescue nil
         raise ChecksummingError if parsed_data.nil?
-        raise ChecksummingError if !parsed_data.fetch(:state,nil) == "done"
+        raise ChecksummingError if !(parsed_data.fetch(:state,nil) == "done")
         # we know that state == "done" at this point, so the crc must be set
         file.crc32 = parsed_data.fetch(:crc32)
       end

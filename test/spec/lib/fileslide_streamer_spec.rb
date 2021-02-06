@@ -42,13 +42,13 @@ RSpec.describe FileslideStreamer do
     it 'fails with 400 if the request uri_list is blank' do
       post '/download', fs_file_name: 'files.zip'
       expect(last_response.status).to eq 400
-      expect(last_response.body).to eq 'Request must include non-empty file_name and uri_list parameters'
+      expect(last_response.body).to include 'The fs_uri_list parameter value must contain at least one URI'
     end
 
     it 'fails with 400 if the request uri_list is not valid JSON' do
       post '/download', fs_file_name: 'files.zip', fs_uri_list: "I'm not valid json"
       expect(last_response.status).to eq 400
-      expect(last_response.body).to eq 'uri_list is not valid JSON'
+      expect(last_response.body).to include 'The fs_uri_list parameter value must either be a form-url encoded or json encoded array'
     end
 
     it 'fails with 400 if some of the uris in the request occur more than once' do
@@ -58,7 +58,7 @@ RSpec.describe FileslideStreamer do
         "http://localhost:9293/random_bytes2.bin"
       ].to_json
       expect(last_response.status).to eq 400
-      expect(last_response.body).to eq 'Duplicate URIs found'
+      expect(last_response.body).to include 'The fs_uri_list parameter value contains duplicate URIs'
     end
 
     it 'fails with 403 and the returned html if the upstream API does not authorize the download' do
@@ -72,7 +72,7 @@ RSpec.describe FileslideStreamer do
       get (last_response.headers["Location"])
 
       expect(last_response.status).to eq 403
-      expect(last_response.body).to eq "NOT ALLOWED"
+      expect(last_response.body).to include "One or more of the files requested for zipping have not been permitted"
     end
 
     it 'fails with 502 and proper errors if any of the upstream servers are unavailable' do
@@ -92,8 +92,7 @@ RSpec.describe FileslideStreamer do
       get (last_response.headers["Location"])
 
       expect(last_response.status).to eq 502
-      expect(last_response.body).to include '502 Bad Gateway'
-      expect(last_response.body).to include 'The following files could not be fetched:'
+      expect(last_response.body).to include 'One or more of the files requested for zipping could not be fetched'
       expect(last_response.body).to include 'http://localhost:9999/allowed_but_unavailable_file1 [503 Service Unavailable]'
       expect(last_response.body).to include 'http://localhost:9999/allowed_but_unavailable_file2 [503 Service Unavailable]'
     end
@@ -113,38 +112,16 @@ RSpec.describe FileslideStreamer do
       get (last_response.headers["Location"])
 
       expect(last_response.status).to eq 502
-      expect(last_response.body).to include '502 Bad Gateway'
-      expect(last_response.body).to include 'The following files could not be fetched:'
-      expect(last_response.body).to include 'http://example.com/allowed_but_unavailable_file1 [404 Not Found]'
-      expect(last_response.body).to include 'http://example.com/allowed_but_unavailable_file2 [404 Not Found]'
+      expect(last_response.body).to include '503 Service Unavailable'
+      expect(last_response.body).to include 'One or more of the files requested for zipping could not be fetched'
     end
 
     context 'when auth is OK'
       context 'streaming full files' do
         it 'attaches the correct filename and reports to upstream' do
-          expect_any_instance_of(UpstreamAPI).to receive(:verify_uri_list).
-            and_return({authorized: true, unauthorized_html: nil})
-          expect_any_instance_of(UpstreamAPI).to receive(:report)
-
           post '/download', fs_file_name: 'zero_files.zip', fs_uri_list: [].to_json
 
-          # Follow the redirect
-          expect(last_response.status).to eq 303
-          get (last_response.headers["Location"])
-
-          expect(last_response.status).to eq 200
-          expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"zero_files.zip\""
-          expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
-
-          # The received body should be a valid zip file with zero items in it.
-          tf = Tempfile.new
-          tf << last_response.body
-          tf.flush
-          Zip::File.open(tf) do | zip |
-            expect(zip.entries.length).to eq(0)
-          end
-        ensure
-          tf.unlink
+          expect(last_response.status).to eq 400
         end
 
         it 'streams the uris as a zip, stores checksums in Redis and reports to upstream' do
@@ -367,7 +344,6 @@ RSpec.describe FileslideStreamer do
             # Follow the redirect
             expect(last_response.status).to eq 303
             get (last_response.headers["Location"])
-
             expect(last_response.status).to eq 200
             expect(last_response.headers["Content-Disposition"]).to eq "attachment; filename=\"download.zip\""
             expect(last_response.headers["Content-Length"]).to eq last_response.body.length.to_s
@@ -424,7 +400,7 @@ RSpec.describe FileslideStreamer do
           get (last_response.headers["Location"])
 
           expect(last_response.status).to eq 400
-          expect(last_response.body).to eq 'Invalid Range header'
+          expect(last_response.body).to include 'Range header must start with \'bytes=\''
         end
 
         it 'returns 416 if a multipart range is requested' do
@@ -440,7 +416,7 @@ RSpec.describe FileslideStreamer do
           get (last_response.headers["Location"])
 
           expect(last_response.status).to eq 416
-          expect(last_response.body).to eq 'Multipart ranges are not supported'
+          expect(last_response.body).to include 'Multipart ranges are not supported'
         end
 
         it 'returns 416 if the start of the range is beyond the size of the zip' do
@@ -511,7 +487,6 @@ RSpec.describe FileslideStreamer do
 
           header 'Range', 'bytes=0-'
           get stream_uri
-
           expect(last_response.status).to eq 206
           expect(last_response.body.length).to eq full_response_body.length
           expect(last_response.body).to eq full_response_body

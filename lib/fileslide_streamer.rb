@@ -42,7 +42,6 @@ class FileslideStreamer < Sinatra::Base
     @error_records = []
     @response_format = :html
     @error_redirect_uri = nil
-
     # Inital requests may be either form url encoded (default) or json encoded
     is_json_request = (request.content_type.downcase == 'application/json')
     if is_json_request
@@ -76,7 +75,7 @@ class FileslideStreamer < Sinatra::Base
     end
     
     # file name
-    zip_file_name = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^-_0-9A-Za-z.]/, '_') : DEFAULT_FILE_NAME
+    zip_file_name = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^[-.]0-9A-Za-z]/, '_') : DEFAULT_FILE_NAME
 
     # uri list - nb: a form url encoded request can have a json encoded uri list
     uri_list = []
@@ -96,7 +95,7 @@ class FileslideStreamer < Sinatra::Base
 
     # check uris
     @error_records = uri_list.map{|uri| uri if uri !~ URI::regexp(['http','https'])}.compact
-    halt 400, 'INVALID_URIS' if error_records.size > 0
+    halt 400, 'INVALID_URIS' if @error_records.size > 0
     
     # request_id is optional
     # passed through to report for testing and tracking
@@ -156,6 +155,7 @@ class FileslideStreamer < Sinatra::Base
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(request_id)
     end
+
     halt 404, 'DOWNLOAD_EXPIRED' if stored_params.nil?
 
     decoded_params = JSON.parse(stored_params, symbolize_names: true)
