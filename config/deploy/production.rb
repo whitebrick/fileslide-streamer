@@ -4,7 +4,7 @@ set :puma_workers, 3
 set :puma_threads, [0, 8]
 set :puma_bind, "tcp://0.0.0.0:9292"
 server '54.81.250.108', user: 'ec2-user', roles: %w{web app db}
-
+server '54.224.173.183', user: 'ec2-user', roles: %w{web app db}
 
 
 

@@ -27,7 +27,7 @@ RSpec.describe FileslideStreamer do
     end
 
     it 'returns 200/All good on the healthcheck' do
-      get 'health_check'
+      get 'healthcheck'
       expect(last_response.status).to eq 200
       expect(last_response.body).to eq "All good\n"
     end
