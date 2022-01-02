@@ -1,4 +1,5 @@
 # fileslide-streamer
+
 Package and stream files for download
 
 - [Docs](https://hello.fileslide.io/zaas-zip-as-a-service/api/)
@@ -6,7 +7,7 @@ Package and stream files for download
 
 ## Running and setup
 
-Install dependencies using `bundle install` and then start the server using `bundle exec rackup`. You will need correct environment variables as well. For development, `cp .env.example .env` to get a file with reasonable defaults. Both testing and running the app requires Redis. The `REDIS_URL` value in the example `.env` file will point at the one at the default location (ie `localhost`, port 6379). WARNING: The test suite will delete all values in Redis using `flushall` before each test, so make sure you don't have any important information in there.
+Install dependencies using `bundle install` and then start the server using `bundle exec rackup`. You will need correct environment variables as well. For development, `cp .env.example .env` to get a file with reasonable defaults. Both testing and running the app requires Redis. The `REDIS_URI` value in the example `.env` file will point at the one at the default location (ie `localhost`, port 6379). WARNING: The test suite will delete all values in Redis using `flushall` before each test, so make sure you don't have any important information in there.
 
 ## Testing
 

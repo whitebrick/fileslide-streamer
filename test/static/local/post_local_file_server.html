@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Streamer Test - Local</title>
+</head>
+
+<body>
+  <form action="http://127.0.0.1:9292/download" accept-charset="UTF-8" method="post">
+    <input type="hidden" name="fs_request_id" id="request_id" value="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee01" />
+    <input type="hidden" name="fs_file_name" id="file_name" value="test.zip" />
+    <input type="hidden" name="fs_uri_list[]" id="uri_list_1"
+      value="http://localhost:9293/test-879m.bin" />
+    <input type="hidden" name="fs_uri_list[]" id="uri_list_2"
+      value="http://localhost:9293/test-358m.bin" />
+    <input type="submit" value="Download" />
+  </form>
+</body>
+
+</html>

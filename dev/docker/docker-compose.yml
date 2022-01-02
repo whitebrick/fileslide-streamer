@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   redis:
     image: redis
@@ -21,8 +21,9 @@ services:
       context: ../../
     command: bash -c "bundle exec puma -b 'tcp://0.0.0.0:9292'"
     environment:
-      - UPSTREAM_API_LOCATION=http://fs_upstream_api:8083
-      - REDIS_URL=redis://redis:6379/0
+      - AUTHORIZATION_ENDPOINT=http://fs_upstream_api:8083/authorize
+      - REPORT_ENDPOINT=http://fs_upstream_api:8083/report
+      - REDIS_URI=redis://redis:6379/0
     volumes:
       - ../../:/app
     ports:

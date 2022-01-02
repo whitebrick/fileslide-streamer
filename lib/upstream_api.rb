@@ -1,5 +1,6 @@
 class UpstreamAPI
-  UPSTREAM_API_LOCATION = ENV.fetch("UPSTREAM_API_LOCATION")
+  AUTHORIZATION_ENDPOINT = ENV.fetch("AUTHORIZATION_ENDPOINT")
+  REPORT_ENDPOINT = ENV.fetch("REPORT_ENDPOINT")
 
   class NotAuthorizedError < Exception
   end
@@ -11,7 +12,7 @@ class UpstreamAPI
   end
 
   def verify_uri_list(uri_list:, file_name: )
-    auth_response = @http.post("#{UPSTREAM_API_LOCATION}/authorize", form: {uri_list: uri_list.to_json})
+    auth_response = @http.headers(:accept => "application/json").post(AUTHORIZATION_ENDPOINT, body: {fs_uri_list: uri_list}.to_json)
     if !auth_response.status.ok?
       raise UpstreamNotFoundError
     end
@@ -36,7 +37,7 @@ class UpstreamAPI
       complete: complete,
     }
     puts "** reporting: #{report_hash}\n\n"
-    @http.post("#{UPSTREAM_API_LOCATION}/report", form: report_hash)
+    @http.headers(:accept => "application/json").post(REPORT_ENDPOINT, body: report_hash.to_json)
   rescue HTTP::Error
     # it's already after the response to the user has completed, not much
     # that we can do

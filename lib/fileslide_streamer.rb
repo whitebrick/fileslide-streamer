@@ -2,6 +2,7 @@ require 'securerandom'
 
 class FileslideStreamer < Sinatra::Base
 
+  UUID_REGEX = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   DOWNLOAD_EXPIRATION_LIMIT_SECONDS = 7 * 24 * 60 * 60 # one week in seconds
   DEFAULT_FILE_NAME = 'download.zip'
   CLIENT_CUSTOM_HEADER_PREFIX = 'fs_add_header-'
@@ -15,14 +16,16 @@ class FileslideStreamer < Sinatra::Base
   end
 
   get "/" do
-    redirect to('https://fileslide.io')
+    root_redirect_uri = ENV.fetch("ROOT_REDIRECT_URI") 
+    root_redirect_uri = 'https://fileslide.io' if root_redirect_uri.nil?
+    redirect to(root_redirect_uri)
   end
 
   get "/healthcheck" do
     "All good\n"
   end
 
-  get '/clear_test_records' do
+  get "/clear_test_records" do
     FileslideStreamer.with_redis do |redis|
       redis.keys.each do |key|
         if key.start_with?("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee")
@@ -46,14 +49,14 @@ class FileslideStreamer < Sinatra::Base
     is_json_request = (request.content_type.downcase == 'application/json')
     if is_json_request
       @response_format = :json
-      # cannot 'request.body.read' more then once so assigned to variable 
+      # Can't 'request.body.read' more then once so assigned to variable 
       json_body = request.body.read
       parsed_params = FileslideStreamer.valid_json(json_body)
       halt 400, 'MALFORMED_JSON_BODY' if parsed_params.nil?
       params.merge!(parsed_params)
     end
 
-    # how errors will be returned (defaults set above)
+    # How errors will be returned (defaults set above)
     if !params[:fs_response_format].nil?
       sym = params[:fs_response_format].to_s.downcase.to_sym
       if [:json, :redirect].include?(sym)
@@ -61,7 +64,7 @@ class FileslideStreamer < Sinatra::Base
       end
     end
 
-    # if asking for errors to be redirected must have valid URL
+    # If asking for errors to be redirected must have valid URL
     if @response_format==:redirect
       if params[:fs_error_redirect_uri].nil? || params[:fs_error_redirect_uri].size==0
         @response_format==:html
@@ -74,10 +77,11 @@ class FileslideStreamer < Sinatra::Base
       end
     end
     
-    # file name
-    zip_file_name = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].gsub!(/[^[-.]0-9A-Za-z]/, '_') : DEFAULT_FILE_NAME
+    # File name
+    zip_file_name = params[:fs_file_name]
+    # TBD zip_file_name = (!params[:fs_file_name].nil? && params[:fs_file_name].size>0) ? params[:fs_file_name].tr(/^[0-9A-Za-z]/, '_') : DEFAULT_FILE_NAME
 
-    # uri list - nb: a form url encoded request can have a json encoded uri list
+    # URI list - nb: a form url encoded request can have a json encoded uri list
     uri_list = []
     if !params[:fs_uri_list].nil? && params[:fs_uri_list].size>0
       if params[:fs_uri_list].is_a?(Array)
@@ -93,21 +97,21 @@ class FileslideStreamer < Sinatra::Base
     halt 400, 'EMPTY_URI_LIST' if uri_list.size==0
     halt 400, 'DUPLICATE_URIS' if uri_list.uniq.size != uri_list.size
 
-    # check uris
+    # Check uris
     @error_records = uri_list.map{|uri| uri if uri !~ URI::regexp(['http','https'])}.compact
     halt 400, 'INVALID_URIS' if @error_records.size > 0
     
     # request_id is optional
-    # passed through to report for testing and tracking
+    # Passed through to report for testing and tracking
     if !params[:fs_request_id].nil?
       request_id = params[:fs_request_id].to_s.downcase
-      halt 400, 'MALFORMED_UUID' if !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
+      halt 400, 'MALFORMED_UUID' if !/#{UUID_REGEX}/.match?(request_id)
     else
       request_id = SecureRandom.uuid
     end
 
-    # sometimes clients will want to forward headers when fetching data for authorization etc
-    # they can either set fs_forward_all_headers=true or put the header as a param with specific prefix
+    # Sometimes clients will want to forward headers when fetching data for authorization etc
+    # They can either set fs_forward_all_headers=true or put the header as a param with specific prefix
     client_headers = {}
     if(params[:fs_forward_all_headers].to_s.downcase == 'true')
       client_headers = FileslideStreamer.filter_client_headers(request.env)
@@ -121,7 +125,7 @@ class FileslideStreamer < Sinatra::Base
       client_headers = FileslideStreamer.filter_client_headers(client_headers)
     end
 
-    # if we get to here request is valid
+    # If we get to here request is valid
     FileslideStreamer.with_redis do |redis|
       redis.set(request_id, {
         file_name: zip_file_name,
@@ -132,8 +136,8 @@ class FileslideStreamer < Sinatra::Base
       }.to_json, ex: DOWNLOAD_EXPIRATION_LIMIT_SECONDS)
     end
 
-    # using the 303 status code forces the browser to change the method to GET.
-    redirect to("#{ENV.fetch("BASE_URL")}/stream/#{request_id}"), 303
+    # Using the 303 status code forces the browser to change the method to GET.
+    redirect to("#{ENV.fetch("BASE_URI")}/stream/#{request_id}"), 303
 
   rescue StandardError => e
     @error_records = e.backtrace
@@ -146,11 +150,11 @@ class FileslideStreamer < Sinatra::Base
     @response_format = :html
     @error_redirect_uri = nil
 
-    # until we have a key, default response is html
+    # Until we have a key, default response is html
     @response_format = :html
     request_id = params[:fs_request_id].to_s.downcase
     halt 400, 'MISSING_REQUEST_ID' if request_id.nil?
-    halt 400, 'MALFORMED_UUID' if !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.match?(request_id)
+    halt 400, 'MALFORMED_UUID' if !/#{UUID_REGEX}/.match?(request_id)
 
     stored_params = FileslideStreamer.with_redis do |redis|
       redis.get(request_id)
@@ -252,7 +256,7 @@ class FileslideStreamer < Sinatra::Base
     http_body = nil
     if ranged_request
       if range_stop >= total_size || range_stop < 0
-        # straight from the HTTP RFC.
+        # Straight from the HTTP RFC.
         range_stop = total_size - 1
       end
       headers.merge!({
@@ -279,7 +283,7 @@ class FileslideStreamer < Sinatra::Base
   end
 
   def self.init!
-    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new(url: ENV.fetch("REDIS_URL")) }
+    @@redis_pool = ConnectionPool.new(size: 8, timeout: 5) { Redis.new(url: ENV.fetch("REDIS_URI")) }
   end
 
   def self.with_redis
