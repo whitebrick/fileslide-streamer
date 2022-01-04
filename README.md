@@ -25,12 +25,14 @@ FileSlide Streamer is an Open Source drop-in service that allows multiple files 
   <input type="submit" value="Download Zip of 2 Files" />
 </form>
 ```
+
 ## Try the demo [https://hello.fileslide.io/](https://hello.fileslide.io/)
 
-FileSlide Streamer is a Ruby server that: receives a request containing a list of file URIs, downloads and zips the listed files in parallel and returns a single zip file.
+FileSlide Streamer is a Ruby server that receives a request containing a list of file URIs, downloads and zips the listed files in parallel and returns a single zip file.
+
+![Sequence Diagram](doc/fileslide-streamer-seq-diagram.png)
 
 - See official documentation here: [https://hello.fileslide.io/docs](https://hello.fileslide.io/docs)
-
 
 ## Getting Started
 

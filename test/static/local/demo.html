@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <title>Streamer Test - Local</title>
+  </head> 
+  <body>
+    <form action="http://127.0.0.1:9292/download" method="post">
+      <input type="hidden" name="fs_request_id" id="request_id" value="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee05" />
+      <input type="hidden" name="fs_file_name" value="demo_download.zip" />
+      <input type="hidden" name="fs_uri_list[]" value="https://my-test-data-1.s3.amazonaws.com/central-park-bike-map.pdf" />
+      <input type="hidden" name="fs_uri_list[]" value="https://s3.wasabisys.com/my-test-data-2/earth.mp4" />
+      <input type="submit" value="Download Zip of 2 Files" />
+    </form>
+  </body>
+</html>

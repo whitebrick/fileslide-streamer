@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Streamer Test - Local</title>
+</head>
+
+<body>
+  <form action="http://127.0.0.1:9292/download" accept-charset="UTF-8" method="post">
+    <input type="hidden" name="fs_request_id" id="request_id" value="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeee06" />
+    <input type="hidden" name="fs_file_name" id="file_name" value="demo_download.zip" />
+    <input type="hidden" name="fs_uri_list[]" id="uri_list_1"
+      value="central-park-bike-map.pdf" />
+    <input type="hidden" name="fs_uri_list[]" id="uri_list_2"
+      value="http://localhost:9293/earth.mp4" />
+    <input type="submit" value="Download Zip of 2 Files" />
+  </form>
+</body>
+
+</html>
