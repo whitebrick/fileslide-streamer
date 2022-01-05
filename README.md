@@ -1,6 +1,6 @@
 # fileslide-streamer
 
-FileSlide Streamer is an Open Source drop-in service that allows multiple files to be downloaded as a single streamed ZIP file.
+FileSlide Streamer is an Open Source drop-in service for downloading multiple files as a single zip stream.
 
 #### Say you have these 2 files on the web:
 
